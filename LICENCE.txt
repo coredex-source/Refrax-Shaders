@@ -1,0 +1,21 @@
+Refrax License
+
+Copyright (c) coredex-source 2025-2026
+
+All Rights Reserved.
+
+No permission is granted to copy, redistribute, sublicense, sell, or publish
+Refrax, in whole or in part, without explicit written permission from
+coredex-source.
+
+You may use Refrax for personal gameplay and for screenshots or videos made
+from gameplay. Any other use, distribution, or derivative work requires explicit
+written permission from coredex-source unless a separate file or written notice
+says otherwise.
+
+REFRAX IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH REFRAX OR THE USE OR OTHER DEALINGS IN REFRAX.

@@ -1,0 +1,106 @@
+screen.LIGHTING=Lighting
+screen.ATMOSPHERE=Atmosphere
+screen.WATER=Water & Reflections
+screen.MATERIALS=Materials
+screen.POST=Post-Processing
+screen.PERFORMANCE=Performance
+
+profile.POTATO=Potato
+profile.LOW=Low
+profile.MEDIUM=Medium
+profile.HIGH=High
+profile.VERY_HIGH=Very High
+profile.EXTREME=Extreme
+profile.OVERDRIVE=Overdrive
+profile.comment=Potato 160+ | Low 125+ | Medium 90+ | High 65+ | Very High 40+ | Extreme 25+ | Overdrive ~20 (Tested on a GTX 1650 Ti, 1080p, Can be easily tuned by changing the performance mode.)
+
+option.SHADOWS=Shadows
+option.SHADOWS.comment=Shadow-mapped sun/moon shadows.
+option.COLORED_SHADOWS=Colored Shadows
+option.COLORED_SHADOWS.comment=Stained glass and other translucents tint their shadows.
+option.shadowMapResolution=Shadow Resolution
+option.shadowDistance=Shadow Distance
+option.SHADOW_SAMPLES=Shadow Softness Samples
+option.SHADOW_SAMPLES.comment=PCF taps per pixel. More = smoother edges, higher cost.
+option.SHADOW_SOFTNESS=Shadow Softness
+option.sunPathRotation=Sun Path Angle
+option.COLORED_LIGHTING=Colored Lighting
+option.COLORED_LIGHTING.comment=Voxel flood-fill colored light from torches, lava, glowstone... The headline feature.
+option.LPV_INTENSITY=Colored Light Brightness
+option.LPV_FALLOFF=Colored Light Range
+option.LPV_FALLOFF.comment=Per-block falloff. Higher = light travels further.
+option.HAND_LIGHT=Held Light
+option.HAND_LIGHT.comment=Held torches light up surroundings.
+option.AO_MODE=Ambient Occlusion
+option.SSAO_SAMPLES=AO Samples
+option.EMISSION_STRENGTH=Emission Strength
+option.MIN_AMBIENT=Night Brightness
+
+option.CLOUD_MODE=Clouds
+option.CLOUD_STEPS=Cloud Quality
+option.CLOUD_LIGHT_STEPS=Cloud Lighting Quality
+option.CLOUD_COVERAGE=Cloud Coverage
+option.GOD_RAYS=God Rays
+option.VL_STEPS=God Ray Quality
+option.VL_STRENGTH=God Ray Strength
+option.FOG_DENSITY=Fog Density
+
+option.WATER_WAVES=Water Waves
+option.WATER_NOISY_WAVES=Noisy Water Waves
+option.WATER_NOISY_WAVES.comment=Richer procedural water wave normals. Costs more GPU time, enabled by High and higher profiles.
+option.WATER_WAVE_INTENSITY=Wave Intensity
+option.WATER_ABSORPTION=Water Absorption
+option.WATER_REFLECTION_MODE=Water Reflections
+option.REFLECTION_MODE=Material Reflections
+option.SSR_STEPS=Reflection Quality
+
+option.PBR_MATERIALS=PBR Materials
+option.PBR_MATERIALS.comment=LabPBR resource pack support (normals, specular, emission).
+option.POM=Parallax Occlusion Mapping
+option.POM_SAMPLES=POM Quality
+option.POM_DEPTH=POM Depth
+option.WAVING_PLANTS=Waving Plants
+
+option.TONEMAP_OPERATOR=Tonemap
+option.EXPOSURE=Exposure
+option.BLOOM=Bloom
+option.BLOOM_STRENGTH=Bloom Strength
+option.AA_MODE=Anti-Aliasing
+option.AA_MODE.comment=TAA is recommended. FXAA is cheaper but does not provide temporal smoothing.
+option.WHITE_BALANCE=White Balance
+option.SATURATION=Saturation
+option.CONTRAST=Contrast
+option.VIBRANCE=Vibrance
+
+option.PERFORMANCE_MODE=Performance Mode
+option.PERFORMANCE_MODE.comment=Scales expensive sample counts for clouds, god rays, AO, reflections and water waves.
+
+value.CLOUD_MODE.0=Off
+value.CLOUD_MODE.1=2D
+value.CLOUD_MODE.2=Volumetric
+value.AO_MODE.0=Off
+value.AO_MODE.1=SSAO
+value.AO_MODE.2=GTAO
+value.REFLECTION_MODE.0=Sky Only
+value.REFLECTION_MODE.1=SSR
+value.REFLECTION_MODE.2=High SSR
+value.WATER_REFLECTION_MODE.0=Sky Only
+value.WATER_REFLECTION_MODE.1=Fast SSR
+value.WATER_REFLECTION_MODE.2=Full SSR
+value.TONEMAP_OPERATOR.0=AgX
+value.TONEMAP_OPERATOR.1=ACES
+value.TONEMAP_OPERATOR.2=Reinhard-Jodie
+value.TONEMAP_OPERATOR.3=Uncharted 2
+value.AA_MODE.0=Off
+value.AA_MODE.1=FXAA
+value.AA_MODE.2=TAA
+value.PERFORMANCE_MODE.1=Off
+value.PERFORMANCE_MODE.2=Low (3/4)
+value.PERFORMANCE_MODE.3=Medium (1/2)
+value.PERFORMANCE_MODE.4=High (1/4)
+value.PERFORMANCE_MODE.5=Very High (1/6)
+value.PERFORMANCE_MODE.6=Extreme (1/8)
+value.PERFORMANCE_MODE.7=Overdrive (1/16)
+value.WHITE_BALANCE.-1.0=Coolest
+value.WHITE_BALANCE.0.0=Neutral
+value.WHITE_BALANCE.1.0=Warmest
