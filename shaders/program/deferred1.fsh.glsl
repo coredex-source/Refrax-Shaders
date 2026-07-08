@@ -38,6 +38,16 @@ in vec2 uv;
 /* RENDERTARGETS: 0 */
 layout(location = 0) out vec4 outColor;
 
+#if MC_VERSION < 260100
+uniform sampler2D colortex7;
+vec4 lineOverlay(vec4 color) {
+    vec4 line = texture(colortex7, uv);
+    return vec4(color.rgb * (1.0 - line.a) + line.rgb, color.a);
+}
+#else
+#define lineOverlay(c) (c)
+#endif
+
 vec3 blockLightAt(vec3 pos, vec3 N, float lmBlock) {
     vec3 fallback = FALLBACK_BLOCKLIGHT * pow(lmBlock, 3.0) * 1.85;
 #ifdef WORLD_NETHER
@@ -67,7 +77,7 @@ vec3 blockLightAt(vec3 pos, vec3 N, float lmBlock) {
 
 void main() {
     vec4 prev = texture(colortex0, uv);
-    if (prev.a > 0.15 && prev.a < 0.85) { outColor = prev; return; }
+    if (prev.a > 0.15 && prev.a < 0.85) { outColor = lineOverlay(prev); return; }
 
     float depth = texture(depthtex0, uv).r;
     vec3 viewPos = screenToView(vec3(uv, depth), gbufferProjectionInverse);
@@ -80,7 +90,7 @@ void main() {
         vec3 sky = dimensionSky(dirW, sunDir, fogColor, frameTimeCounter, rainStrength);
         vec4 clouds = texture(colortex4, uv);
         sky = sky * clouds.a + clouds.rgb;
-        outColor = vec4(sky, 1.0);
+        outColor = lineOverlay(vec4(sky, 1.0));
         return;
     }
 
@@ -183,5 +193,5 @@ void main() {
   #endif
 #endif
 
-    outColor = vec4(color, 1.0);
+    outColor = lineOverlay(vec4(color, 1.0));
 }

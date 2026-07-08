@@ -44,6 +44,10 @@ void main() {
 
 #ifdef BLOCK_ENTITY
     if (blockEntityId == 10030) {
+#if MC_VERSION < 12100
+        N = normalize(cross(dFdx(scenePos), dFdy(scenePos)));
+        if (dot(N, scenePos) > 0.0) N = -N;
+#endif
         vec3 portal = endPortalColor(scenePos, cameraPosition, N, frameTimeCounter);
         outAlbedo = vec4(linearToSrgb(portal), 1.0);
         outNormal = vec4(N, 0.55);
