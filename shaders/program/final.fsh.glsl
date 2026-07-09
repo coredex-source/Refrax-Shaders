@@ -3,6 +3,9 @@
 #include "/lib/settings.glsl"
 #include "/lib/common.glsl"
 #include "/lib/post.glsl"
+#if SHARPEN_MODE > 0
+#include "/lib/cas.glsl"
+#endif
 
 const bool colortex0MipmapEnabled = true;
 
@@ -153,6 +156,18 @@ void main() {
   #else
     color = morphAA(uv, color, px, bloom, exposure);
   #endif
+#endif
+
+#if SHARPEN_MODE == 1
+    vec3 ca = processPixel(uv + vec2(-px.x, -px.y), bloom, exposure);
+    vec3 cb = processPixel(uv + vec2( 0.0,  -px.y), bloom, exposure);
+    vec3 cc = processPixel(uv + vec2( px.x, -px.y), bloom, exposure);
+    vec3 cd = processPixel(uv + vec2(-px.x,  0.0), bloom, exposure);
+    vec3 cf = processPixel(uv + vec2( px.x,  0.0), bloom, exposure);
+    vec3 cg = processPixel(uv + vec2(-px.x,  px.y), bloom, exposure);
+    vec3 ch = processPixel(uv + vec2( 0.0,   px.y), bloom, exposure);
+    vec3 ci = processPixel(uv + vec2( px.x,  px.y), bloom, exposure);
+    color = casSharpen(ca, cb, cc, cd, color, cf, cg, ch, ci, CAS_SHARPNESS);
 #endif
 
     color += (ign(gl_FragCoord.xy) - 0.5) / 255.0;

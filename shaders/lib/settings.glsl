@@ -67,6 +67,7 @@
 #define AO_MODE 1           //[0 1 2] 0=off 1=SSAO 2=GTAO-ish
 #define REFLECTION_MODE 1   //[0 1 2] 0=sky-only 1=SSR 2=high SSR
 #define TONEMAP_OPERATOR 1  //[0 1 2 3] 0=AgX 1=ACES 2=Reinhard-Jodie 3=Uncharted2
+#define SHARPEN_MODE 0      //[0 1] 0=off 1=CAS
 
 #define VL_STEPS 12          // [4 6 8 12 16 24 32 48]
 #define CLOUD_STEPS 12       // [6 8 12 16 20 24 32 48 64]
@@ -78,6 +79,7 @@
 
 #define EXPOSURE 1.0         // [0.25 0.4 0.55 0.7 0.85 1.0 1.15 1.3 1.5 1.75 2.0 2.5 3.0]
 #define BLOOM_STRENGTH 1.0   // [0.0 0.25 0.5 0.75 1.0 1.25 1.5 2.0 2.5 3.0]
+#define CAS_SHARPNESS 0.5    // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0]  applies when Sharpening = CAS
 #define SHADOW_SOFTNESS 1.0  // [0.25 0.5 0.75 1.0 1.25 1.5 2.0 2.5 3.0]
 #define CLOUD_COVERAGE 0.5   // [0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0]
 #define FOG_DENSITY 1.0      // [0.0 0.25 0.5 0.75 1.0 1.25 1.5 2.0 3.0 4.0]
