@@ -44,4 +44,5 @@ Refrax is original source, **inspired** by Photon, Complementary Reimagined, Bli
 Solas, MakeUp Ultra Fast, Super Duper Vanilla, published graphics research, and
 the Iris shader documentation.
 
-AMD for Contrast Adaptive Sharpening (CAS), see [cas.glsl](shaders/lib/cas.glsl) for the implementaion and CAS Licence.
+AMD for Contrast Adaptive Sharpening (CAS) and FidelityFX Super Resolution 1 (EASU + RCAS) — see
+[cas.glsl](shaders/lib/cas.glsl) and [fsr1.glsl](shaders/lib/fsr1.glsl) for the implementations and the MIT licence they are ported under.

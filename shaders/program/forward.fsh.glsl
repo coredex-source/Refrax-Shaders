@@ -240,7 +240,7 @@ void main() {
             vec3 hitScene = (gbufferModelViewInverse * vec4(hitView, 1.0)).xyz;
             vec3 prevUV = reprojectScene(hitScene, gbufferPreviousModelView, gbufferPreviousProjection, cameraPosition, previousCameraPosition);
             if (clamp(prevUV.xy, 0.0, 1.0) == prevUV.xy) {
-                vec4 hist = texture(colortex5, prevUV.xy);
+                vec4 hist = texture(colortex5, fsrRegionUV(prevUV.xy, 1.0 / vec2(viewWidth, viewHeight)));
                 refl = mix(refl, hist.rgb, hitS * saturate(hist.a));
             }
         }

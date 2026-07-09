@@ -37,6 +37,12 @@ vec3 reprojectScene(vec3 scenePos, mat4 prevMV, mat4 prevProj, vec3 camPos, vec3
     return clip.xyz / clip.w * 0.5 + 0.5;
 }
 
+#ifndef FSR_SCALE
+#define FSR_SCALE 1.0
+#endif
+vec2 fsrRegionUV(vec2 sceneUV, vec2 texel) {
+    return clamp(sceneUV * FSR_SCALE, vec2(0.0), vec2(FSR_SCALE) - 0.5 * texel);
+}
 
 vec2 taaOffset(int frame) {
     const vec2 halton[8] = vec2[8](

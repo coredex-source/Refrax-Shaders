@@ -34,7 +34,9 @@ vec3 clipToAABB(vec3 h, vec3 mn, vec3 mx) {
 #endif
 
 void main() {
-    vec4 c0 = texture(colortex0, uv);
+    vec2 px = 1.0 / vec2(viewWidth, viewHeight);
+    vec2 ruv = fsrRegionUV(uv, px);
+    vec4 c0 = texture(colortex0, ruv);
     vec3 current = c0.rgb;
     if (any(isnan(current))) current = vec3(0.0);
     current = max(current, vec3(0.0));
@@ -63,27 +65,39 @@ void main() {
         return;
     }
 
-    vec2 px = 1.0 / vec2(viewWidth, viewHeight);
     vec3 cw = taaTonemap(current);
     vec3 m1 = cw, m2 = cw * cw;
+    vec2 rMax = vec2(FSR_SCALE) - 0.5 * px;
     for (int x = -1; x <= 1; x++)
     for (int y = -1; y <= 1; y++) {
         if (x == 0 && y == 0) continue;
-        vec3 s = taaTonemap(texture(colortex0, uv + vec2(x, y) * px).rgb);
+        vec3 s = taaTonemap(texture(colortex0, clamp(ruv + vec2(x, y) * px, vec2(0.0), rMax)).rgb);
         m1 += s; m2 += s * s;
     }
     vec3 mu = m1 / 9.0;
     vec3 sigma = sqrt(max(m2 / 9.0 - mu * mu, 0.0));
-    vec3 hist = texture(colortex5, prevUV.xy).rgb;
+    vec3 hist = texture(colortex5, fsrRegionUV(prevUV.xy, px)).rgb;
     if (any(isnan(hist))) hist = current;
     vec3 hw = taaTonemap(max(hist, vec3(0.0)));
-    hw = clipToAABB(hw, mu - TAA_CLIP_GAMMA * sigma, mu + TAA_CLIP_GAMMA * sigma);
-
     float motion = length((prevUV.xy - uv) / px);
+#ifdef FSR
+    float clipGamma = mix(2.5, 1.0, saturate(motion * 0.5));
+    float blend = TAA_BLEND * saturate(1.0 - motion * 0.03 / FSR_SCALE);
+#else
+    const float clipGamma = TAA_CLIP_GAMMA;
     float blend = TAA_BLEND * saturate(1.0 - motion * 0.03);
+#endif
+    hw = clipToAABB(hw, mu - clipGamma * sigma, mu + clipGamma * sigma);
+
     if (c0.a < 0.5) blend = min(blend, 0.15);
-    vec3 resolved = min(taaUntonemap(mix(cw, hw, blend)), vec3(60000.0));
-    outColor = vec4(resolved, 1.0);
+    vec3 resolvedW = mix(cw, hw, blend);
+#ifdef FSR
+    vec3 outW = max(resolvedW + (resolvedW - mu) * 0.35, 0.0);
+#else
+    vec3 outW = resolvedW;
+#endif
+    vec3 resolved = min(taaUntonemap(resolvedW), vec3(60000.0));
+    outColor = vec4(min(taaUntonemap(outW), vec3(60000.0)), 1.0);
     outHistory = vec4(resolved, reflectable);
 #endif
 }

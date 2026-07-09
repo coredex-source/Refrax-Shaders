@@ -36,6 +36,16 @@ in vec2 uv;
 /* RENDERTARGETS: 0 */
 layout(location = 0) out vec4 outColor;
 
+#ifdef FSR
+vec4 sampleSceneFsr(vec2 suv, vec2 px) {
+    vec2 r = px * (0.25 * max(1.0 / FSR_SCALE - 1.0, 0.0));
+    return 0.25 * (texture(colortex0, suv + vec2(-r.x, -r.y)) +
+                   texture(colortex0, suv + vec2( r.x, -r.y)) +
+                   texture(colortex0, suv + vec2(-r.x,  r.y)) +
+                   texture(colortex0, suv + vec2( r.x,  r.y)));
+}
+#endif
+
 void main() {
     vec2 suv = uv;
     float depth0 = texture(depthtex0, suv).r;
@@ -63,7 +73,11 @@ void main() {
         suv = clamp(suv + wave * (0.0014 + 0.0007 * eyeSkyPre) * UNDERWATER_DISTORTION, vec2(0.001), vec2(0.999));
         depth0 = texture(depthtex0, suv).r;
     }
+#ifdef FSR
+    vec4 c0 = sampleSceneFsr(suv, 1.0 / vec2(viewWidth, viewHeight));
+#else
     vec4 c0 = texture(colortex0, suv);
+#endif
     vec3 color = c0.rgb;
 
     vec3 viewPos = screenToView(vec3(uv, depth0), gbufferProjectionInverse);

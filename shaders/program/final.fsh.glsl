@@ -3,8 +3,10 @@
 #include "/lib/settings.glsl"
 #include "/lib/common.glsl"
 #include "/lib/post.glsl"
-#if SHARPEN_MODE > 0
+#if SHARPEN_MODE == 1
 #include "/lib/cas.glsl"
+#elif SHARPEN_MODE == 2
+#include "/lib/fsr1.glsl"
 #endif
 
 const bool colortex0MipmapEnabled = true;
@@ -120,15 +122,17 @@ void main() {
 
     vec3 color = processPixel(uv, bloom, exposure);
 
-#ifdef FXAA
-#ifndef TAA
+#if defined FXAA || defined TEMPORAL_AA || SHARPEN_MODE > 0
+    vec3 cN = processPixel(uv + vec2(0.0, -px.y), bloom, exposure);
+    vec3 cS = processPixel(uv + vec2(0.0,  px.y), bloom, exposure);
+    vec3 cE = processPixel(uv + vec2( px.x, 0.0), bloom, exposure);
+    vec3 cW = processPixel(uv + vec2(-px.x, 0.0), bloom, exposure);
+#endif
+
+#if defined FXAA && !(defined FSR && defined TEMPORAL_AA)
     {
-        vec3 n = processPixel(uv + vec2(0.0, -px.y), bloom, exposure);
-        vec3 s = processPixel(uv + vec2(0.0,  px.y), bloom, exposure);
-        vec3 e = processPixel(uv + vec2( px.x, 0.0), bloom, exposure);
-        vec3 w = processPixel(uv + vec2(-px.x, 0.0), bloom, exposure);
         float lC = luminance(color);
-        float lN = luminance(n), lS = luminance(s), lE = luminance(e), lW = luminance(w);
+        float lN = luminance(cN), lS = luminance(cS), lE = luminance(cE), lW = luminance(cW);
         float lMin = min(lC, min(min(lN, lS), min(lE, lW)));
         float lMax = max(lC, max(max(lN, lS), max(lE, lW)));
         float range = lMax - lMin;
@@ -139,14 +143,9 @@ void main() {
         }
     }
 #endif
-#endif
 
-#ifdef TEMPORAL_AA
-    vec3 n = processPixel(uv + vec2(0.0, -px.y), bloom, exposure);
-    vec3 s = processPixel(uv + vec2(0.0,  px.y), bloom, exposure);
-    vec3 e = processPixel(uv + vec2( px.x, 0.0), bloom, exposure);
-    vec3 w = processPixel(uv + vec2(-px.x, 0.0), bloom, exposure);
-    color = saturate(sharpen(color, n, s, e, w, 0.35));
+#if defined TEMPORAL_AA && SHARPEN_MODE == 0
+    color = saturate(sharpen(color, cN, cS, cE, cW, 0.35));
 #endif
 
 #ifdef MORPH_AA
@@ -159,15 +158,16 @@ void main() {
 #endif
 
 #if SHARPEN_MODE == 1
-    vec3 ca = processPixel(uv + vec2(-px.x, -px.y), bloom, exposure);
-    vec3 cb = processPixel(uv + vec2( 0.0,  -px.y), bloom, exposure);
-    vec3 cc = processPixel(uv + vec2( px.x, -px.y), bloom, exposure);
-    vec3 cd = processPixel(uv + vec2(-px.x,  0.0), bloom, exposure);
-    vec3 cf = processPixel(uv + vec2( px.x,  0.0), bloom, exposure);
-    vec3 cg = processPixel(uv + vec2(-px.x,  px.y), bloom, exposure);
-    vec3 ch = processPixel(uv + vec2( 0.0,   px.y), bloom, exposure);
-    vec3 ci = processPixel(uv + vec2( px.x,  px.y), bloom, exposure);
-    color = casSharpen(ca, cb, cc, cd, color, cf, cg, ch, ci, CAS_SHARPNESS);
+    if (SHARPEN_STRENGTH > 0.0) {
+        vec3 cNW = processPixel(uv + vec2(-px.x, -px.y), bloom, exposure);
+        vec3 cNE = processPixel(uv + vec2( px.x, -px.y), bloom, exposure);
+        vec3 cSW = processPixel(uv + vec2(-px.x,  px.y), bloom, exposure);
+        vec3 cSE = processPixel(uv + vec2( px.x,  px.y), bloom, exposure);
+        color = casSharpen(cNW, cN, cNE, cW, color, cE, cSW, cS, cSE, SHARPEN_STRENGTH);
+    }
+#elif SHARPEN_MODE == 2
+    if (SHARPEN_STRENGTH > 0.0)
+        color = rcasSharpen(cN, cW, color, cE, cS, exp2(-2.0 * (1.0 - SHARPEN_STRENGTH)));
 #endif
 
     color += (ign(gl_FragCoord.xy) - 0.5) / 255.0;

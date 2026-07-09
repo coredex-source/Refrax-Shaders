@@ -76,6 +76,7 @@ vec3 blockLightAt(vec3 pos, vec3 N, float lmBlock) {
 }
 
 void main() {
+    vec2 viewTexel = 1.0 / vec2(viewWidth, viewHeight);
     vec4 prev = texture(colortex0, uv);
     if (prev.a > 0.15 && prev.a < 0.85) { outColor = lineOverlay(prev); return; }
 
@@ -88,7 +89,7 @@ void main() {
 
     if (depth >= 1.0) {
         vec3 sky = dimensionSky(dirW, sunDir, fogColor, frameTimeCounter, rainStrength);
-        vec4 clouds = texture(colortex4, uv);
+        vec4 clouds = texture(colortex4, fsrRegionUV(uv, viewTexel));
         sky = sky * clouds.a + clouds.rgb;
         outColor = lineOverlay(vec4(sky, 1.0));
         return;
@@ -104,7 +105,7 @@ void main() {
     vec2 lm = c3.xy;
     float roughness = c3.z;
     float f0raw = c3.w;
-    float ao = texture(colortex6, uv).r;
+    float ao = texture(colortex6, fsrRegionUV(uv, viewTexel)).r;
     float dither = ignAnim(gl_FragCoord.xy, frameCounter);
 
 #if defined DEBUG_LPV && defined COLORED_LIGHTING
@@ -179,7 +180,7 @@ void main() {
                 vec3 hitScene = (gbufferModelViewInverse * vec4(hitView, 1.0)).xyz;
                 vec3 prevUV = reprojectScene(hitScene, gbufferPreviousModelView, gbufferPreviousProjection, cameraPosition, previousCameraPosition);
                 if (clamp(prevUV.xy, 0.0, 1.0) == prevUV.xy) {
-                    vec4 hist = texture(colortex5, prevUV.xy);
+                    vec4 hist = texture(colortex5, fsrRegionUV(prevUV.xy, viewTexel));
                     refl = mix(refl, hist.rgb, hitS * saturate(hist.a));
                 }
             }
