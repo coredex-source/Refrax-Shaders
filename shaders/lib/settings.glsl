@@ -13,6 +13,7 @@
 //#define POM
 #define PERFORMANCE_MODE 3  //[1 2 3 4 5 6 7] 1=off 2=low 3=medium 4=high 5=very_high 6=extreme 7=overdrive
 #define WAVING_PLANTS
+#define END_PORTAL_STYLE 1  //[0 1 2 3 4] 0=classic 1=vibrant 2=deep_space 3=amethyst 4=void
 #define WATER_WAVES
 //#define WATER_NOISY_WAVES
 #define HAND_LIGHT
