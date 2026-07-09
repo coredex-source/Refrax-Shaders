@@ -18,7 +18,7 @@ in vec2 uv;
 layout(location = 0) out vec4 outColor;
 layout(location = 1) out vec4 outHistory;
 
-#ifdef TAA
+#ifdef TEMPORAL_AA
 float max3(vec3 v) { return max(v.x, max(v.y, v.z)); }
 vec3 taaTonemap(vec3 c)   { return c / (1.0 + max3(c)); }
 vec3 taaUntonemap(vec3 c) { return c / max(1.0 - max3(c), 1e-4); }
@@ -39,7 +39,7 @@ void main() {
     if (any(isnan(current))) current = vec3(0.0);
     current = max(current, vec3(0.0));
     float reflectable = texture(colortex2, uv).a > 2.5 ? 0.0 : 1.0;
-#ifndef TAA
+#ifndef TEMPORAL_AA
     outColor = vec4(current, 1.0);
     outHistory = vec4(current, reflectable);
 #else

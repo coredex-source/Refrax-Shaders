@@ -45,7 +45,7 @@ vec2 taaOffset(int frame) {
     return halton[frame % 8] - 0.5;
 }
 vec4 taaJitterPos(vec4 clipPos, vec2 viewSize, int frame) {
-#ifdef TAA
+#ifdef TEMPORAL_AA
     clipPos.xy += taaOffset(frame) * 2.0 * clipPos.w / viewSize;
 #endif
     return clipPos;

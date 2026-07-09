@@ -8,7 +8,7 @@
 #define COLORED_LIGHTING
 #define GOD_RAYS
 #define BLOOM
-#define AA_MODE 2           //[0 1 2] 0=off 1=FXAA 2=TAA
+#define AA_MODE 2           //[0 1 2 3 4 5] 0=off 1=FXAA 2=TAA 3=SMAA 4=TSMAA 5=alpha-tested
 #define PBR_MATERIALS
 //#define POM
 #define PERFORMANCE_MODE 3  //[1 2 3 4 5 6 7] 1=off 2=low 3=medium 4=high 5=very_high 6=extreme 7=overdrive
@@ -18,10 +18,23 @@
 //#define WATER_NOISY_WAVES
 #define HAND_LIGHT
 
-#if AA_MODE == 2
-#define TAA
-#elif AA_MODE == 1
+#if AA_MODE == 1
 #define FXAA
+#elif AA_MODE == 2
+#define TAA
+#elif AA_MODE == 3
+#define SMAA
+#elif AA_MODE == 4
+#define TSMAA
+#elif AA_MODE == 5
+#define ATAA
+#endif
+
+#if defined TAA || defined TSMAA || defined ATAA
+#define TEMPORAL_AA
+#endif
+#if defined SMAA || defined TSMAA || defined ATAA
+#define MORPH_AA
 #endif
 
 #if PERFORMANCE_MODE == 2
@@ -134,6 +147,11 @@ const float ambientOcclusionLevel = 1.0;
 
 #define TAA_BLEND 0.90
 #define TAA_CLIP_GAMMA 1.25
+
+#define SMAA_EDGE_THRESHOLD 0.10
+#define SMAA_SEARCH_STEPS 8
+#define SMAA_STRENGTH 1.0
+#define ATAA_DEPTH_EDGE 0.15
 
 #define WAVE_SPEED 1.0
 #define WAVE_AMOUNT 1.0
