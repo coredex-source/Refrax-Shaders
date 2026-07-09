@@ -2,6 +2,8 @@
 
 Refrax is a performance and feature-focused Minecraft shaderpack for **Iris**.
 
+![Swamp](img/cover.png)
+
 ## Performance benchmarks (GTX 1650 Ti, 1080p, 16 chunks)
 
 | Profile | Target FPS |
@@ -14,7 +16,17 @@ Refrax is a performance and feature-focused Minecraft shaderpack for **Iris**.
 | Extreme | 25+ |
 | Overdrive | ~20 |
 
+I saw a ~25 fps boost on 1.18.2, 20+ fps boost on 1.20.1 and ~15 fps boost on 1.21.1.
+
 These values can be bumped higher by changing the performance mode slider at very little visual compromise even at overdrive performance mode (You'll only notice it in certain situations. It mainly reduces the sample count of clouds, god rays, AO, SSR, and water wave octaves, most noticeable of which are reflections and water which will be tuned to be less noticeable in the future).
+
+## Supported versions:
+1.18.2 and higher versions should all work just fine.
+
+## Unsupported versions:
+1.16.5 - No colored lighting and no block breaking particles.
+1.17.x, 1.18 - Does not load the shader
+1.18.1 - Does not render a lot of blocks.
 
 ## Installation
 
