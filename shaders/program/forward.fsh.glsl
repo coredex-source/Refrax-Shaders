@@ -322,7 +322,7 @@ void main() {
 
             vec3 portalTex = mix(texA.rgb, texB.rgb, 0.35);
             vec3 portal = srgbToLinear(portalTex * tint) * (2.0 + 2.5 * veil) + srgbToLinear(tint) * (0.35 + 0.55 * sheet);
-            lit = portal * (3.8 * EMISSION_STRENGTH) + portal * blockLight * 0.12;
+            lit = portal * (NETHER_PORTAL_BRIGHTNESS * EMISSION_STRENGTH) + portal * blockLight * 0.12;
             alpha = saturate(max(texA.a, texB.a) * (0.68 + 0.26 * veil));
             alpha *= smoothstep(0.08, 0.55, length(scenePos));
         }
