@@ -3,15 +3,15 @@
 #include "/lib/settings.glsl"
 #include "/lib/common.glsl"
 #include "/lib/post.glsl"
+#include "/lib/bloom.glsl"
 #if SHARPEN_MODE == 1
 #include "/lib/cas.glsl"
 #elif SHARPEN_MODE == 2
 #include "/lib/fsr1.glsl"
 #endif
 
-const bool colortex0MipmapEnabled = true;
-
 uniform sampler2D colortex0;
+uniform sampler2D colortex4;
 uniform float viewWidth, viewHeight;
 uniform ivec2 eyeBrightnessSmooth;
 uniform int frameCounter;
@@ -25,21 +25,21 @@ in vec2 uv;
 layout(location = 0) out vec4 outColor;
 
 vec3 bloomSample(vec2 coord) {
+    vec2 px = 1.0 / vec2(viewWidth, viewHeight);
     vec3 bloom = vec3(0.0);
-    float wsum = 0.0;
-    for (int i = 2; i <= 6; i++) {
-        float w = 1.0 / float(i);
-        bloom += textureLod(colortex0, coord, float(i)).rgb * w;
-        wsum += w;
+    for (int i = 0; i < BLOOM_LEVELS; i++) {
+        float s = bloomLevelScale(i);
+        vec2 pad = 0.75 * px / s;
+        vec2 uvT = vec2(0.0, bloomLevelY(i)) + clamp(coord, pad, 1.0 - pad) * s;
+        bloom += texture(colortex4, uvT).rgb;
     }
-    return bloom / wsum;
+    return bloom / float(BLOOM_LEVELS);
 }
 
 vec3 processPixel(vec2 coord, vec3 bloom, float exposure) {
     vec3 hdr = texture(colortex0, coord).rgb;
 #ifdef BLOOM
     hdr = mix(hdr, bloom, saturate(BLOOM_STRENGTH * 0.12));
-    hdr += bloom * bloom * BLOOM_STRENGTH * 0.05;
 #endif
     hdr *= exposure;
     vec3 ldr = applyTonemap(hdr);

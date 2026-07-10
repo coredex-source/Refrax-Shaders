@@ -209,7 +209,7 @@ void main() {
     vec3 lit = albedo.rgb * (lightCol * NoL * shadow + skyLight + blockLight + minAmb);
     float alpha = albedo.a;
   #if defined PBR_MATERIALS && !defined PARTICLE
-    lit += albedo.rgb * mat.emission * EMISSION_STRENGTH * 6.0;
+    lit += albedo.rgb * sqrt(albedo.rgb) * (mat.emission * EMISSION_STRENGTH * EMISSION_SCALE);
   #endif
 
   #ifdef WATER

@@ -29,6 +29,9 @@ option.COLORED_LIGHTING.comment=Voxel flood-fill colored light from torches, lav
 option.LPV_INTENSITY=Colored Light Brightness
 option.LPV_FALLOFF=Colored Light Range
 option.LPV_FALLOFF.comment=Per-block falloff. Higher = light travels further.
+option.LPV_FOG=Light Fog Glow
+option.LPV_FOG.comment=Air near light sources picks up a soft volumetric glow. Stronger emitters glow further.
+option.LPV_FOG_STRENGTH=Light Fog Strength
 option.HAND_LIGHT=Held Light
 option.HAND_LIGHT.comment=Held torches light up surroundings.
 option.AO_MODE=Ambient Occlusion

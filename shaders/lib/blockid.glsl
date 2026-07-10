@@ -37,7 +37,19 @@ vec3 blockLightColor(int id) {
 }
 
 bool isEmitter(int id)   { return id >= 10001 && id <= 10029; }
-bool isNoOcclude(int id) { return id >= 10050; } 
+
+float emitterEmission(int id, float z) {
+    float z3 = z * z * z;
+    if (id == 10004 || id == 10005 || id == 10006 || id == 10008
+     || (id >= 10010 && id <= 10013) || id == 10023)
+        return 0.10 + 0.90 * z3;
+    if (id == 10007) return smoothstep(0.45, 0.85, z);
+    if (id <= 10003 || id == 10009 || id == 10020 || id == 10024)
+        return z3 * smoothstep(0.35, 0.75, z);
+    return 0.4 * z3 * z;
+}
+
+bool isNoOcclude(int id) { return id >= 10050; }
 bool isFoliage(int id)   { return id >= 10050 && id <= 10059; }
 bool isWavingShort(int id) { return id == 10050; }
 bool isWavingLeaf(int id)  { return id == 10051; }

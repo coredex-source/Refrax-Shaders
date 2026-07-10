@@ -150,7 +150,7 @@ void main() {
 #endif
 
     vec3 color = albedo * diffuse;
-    color += albedo * emission * EMISSION_STRENGTH * 6.0;
+    color += albedo * sqrt(albedo) * (emission * EMISSION_STRENGTH * EMISSION_SCALE);
 
 #if defined PBR_MATERIALS || REFLECTION_MODE > 0
     vec3 V = -dirW;

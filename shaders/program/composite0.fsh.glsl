@@ -5,6 +5,9 @@
 #include "/lib/atmosphere.glsl"
 #include "/lib/water.glsl"
 #include "/lib/shadows.glsl"
+#if defined COLORED_LIGHTING && defined LPV_FOG
+#include "/lib/voxel.glsl"
+#endif
 
 /* ---- Buffer formats ----
 const int colortex0Format = RGBA16F;
@@ -20,6 +23,9 @@ const bool colortex5Clear = false;
 uniform sampler2D colortex0;
 uniform sampler2D colortex2;
 uniform sampler2D depthtex0, depthtex1;
+#if defined COLORED_LIGHTING && defined LPV_FOG
+uniform sampler3D lpvSampler1;
+#endif
 uniform sampler2D shadowtex0, shadowtex1, shadowcolor0;
 uniform mat4 gbufferModelViewInverse, gbufferProjectionInverse;
 uniform mat4 shadowModelView, shadowProjection;
@@ -118,6 +124,25 @@ void main() {
         }
     }
 #endif
+#endif
+
+#if defined COLORED_LIGHTING && defined LPV_FOG
+    {
+        int steps = PERF_SCALED_COUNT(12, 4);
+        float maxD = min(fogDist, LPV_FOG_DISTANCE);
+        float dt = maxD / float(steps);
+        vec3 glow = vec3(0.0);
+        for (int i = 0; i < steps; i++) {
+            vec3 p = dirW * (dt * (float(i) + dither));
+            float fade;
+            glow += sampleLPV(lpvSampler1, p, cameraPosition, vec3(0.0), fade) * fade;
+        }
+        float media = LPV_FOG_DENSITY * (1.0 + rainStrength) * LPV_FOG_STRENGTH;
+#ifdef WORLD_NETHER
+        media *= 0.5;
+#endif
+        color += (glow / float(steps)) * maxD * media;
+    }
 #endif
 
     if (isEyeInWater == 1) {

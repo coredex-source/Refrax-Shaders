@@ -136,7 +136,7 @@ void main() {
         mat.f0 = MATTE_FOLIAGE_F0;
     }
     if (emission <= 0.0 && isEmitter(blockId))
-        emission = smoothstep(0.35, 0.9, luminance(albedo.rgb)) * 0.85;
+        emission = emitterEmission(blockId, luminance(albedo.rgb));
     if (mat.roughness > 0.85) {
         if (blockId == 10040) { mat.roughness = 0.28; mat.f0 = 0.045; }
         else if (blockId == 10041) { mat.roughness = 0.12; mat.f0 = 0.055; }
