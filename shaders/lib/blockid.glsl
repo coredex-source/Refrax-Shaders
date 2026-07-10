@@ -51,7 +51,7 @@ float emitterEmission(int id, float z) {
 
 float heldLightValue(int id, int lv) {
     if (lv > 0) return float(lv);
-    return id == 10008 ? 15.0 : 0.0; // lava bucket casts light but is not a block item
+    return id == 10008 ? 15.0 : 0.0;
 }
 vec3 heldLightColor(int id) {
     vec3 c = (id >= 10001 && id <= 10029) ? blockLightColor(id) : vec3(0.0);

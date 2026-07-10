@@ -22,10 +22,13 @@ in vec2 uv;
 layout(location = 0) out vec4 outColor;
 layout(location = 1) out vec4 outHistory;
 
-#ifdef TEMPORAL_AA
+#if defined TEMPORAL_AA || defined FSR
 float max3(vec3 v) { return max(v.x, max(v.y, v.z)); }
 vec3 taaTonemap(vec3 c)   { return c / (1.0 + max3(c)); }
 vec3 taaUntonemap(vec3 c) { return c / max(1.0 - max3(c), 1e-4); }
+#endif
+
+#ifdef TEMPORAL_AA
 
 vec3 clipToAABB(vec3 h, vec3 mn, vec3 mx) {
     vec3 c = 0.5 * (mx + mn);
@@ -38,13 +41,20 @@ vec3 clipToAABB(vec3 h, vec3 mn, vec3 mx) {
 #endif
 
 #ifdef TAAU
+float taauYcocgPeak(vec3 c) { return max3(ycocgToRgb(c)); }
+vec3 taauLimitPeak(vec3 c, float peak) {
+    c = max(c, vec3(0.0));
+    return c * min(1.0, peak / max(max3(c), 1e-5));
+}
+
 void main() {
     vec2 viewSize = vec2(viewWidth, viewHeight);
     vec2 px = 1.0 / viewSize;
     vec2 inSize = floor(viewSize * UPSCALE_SCALE);
     vec2 regionMax = inSize - 0.5;
 
-    float reflectable = texture(colortex2, uv).a > 2.5 ? 0.0 : 1.0;
+    float materialA = texture(colortex2, uv).a;
+    float reflectable = materialA > 2.5 ? 0.0 : 1.0;
 
     vec2 posPx = uv * inSize + taauOffset(frameCounter);
     vec2 posUV = clamp(posPx, vec2(0.5), regionMax) * px;
@@ -59,6 +69,15 @@ void main() {
 
     ivec2 t0 = ivec2(gl_FragCoord.xy);
     ivec2 tmax = ivec2(viewSize) - 1;
+    float emissiveReactive = materialA <= 1.0 ? saturate(materialA) : 0.0;
+    float portalReactive = step(2.01, materialA);
+    for (int i = 0; i < 4; i++) {
+        ivec2 o = ivec2(i == 0 ? -1 : (i == 1 ? 1 : 0),
+                         i == 2 ? -1 : (i == 3 ? 1 : 0));
+        float a = texelFetch(colortex2, clamp(t0 + o, ivec2(0), tmax), 0).a;
+        if (a <= 1.0) emissiveReactive = max(emissiveReactive, saturate(a));
+        portalReactive = max(portalReactive, step(2.01, a));
+    }
     float centerDepth = texelFetch(depthtex0, t0, 0).r;
     vec3 closest = vec3(gl_FragCoord.xy, centerDepth);
     for (int i = 0; i < 4; i++) {
@@ -86,7 +105,7 @@ void main() {
 
     if (clamp(prevUV.xy, 0.0, 1.0) != prevUV.xy) {
         outColor = vec4(current, 1.0);
-        outHistory = vec4(current, reflectable > 0.5 ? 1.0 : -1.0);
+        outHistory = vec4(current, portalReactive < 0.5 && reflectable > 0.5 ? 1.0 : -1.0);
         return;
     }
 
@@ -107,6 +126,10 @@ void main() {
     vec3 nG = TAAU_FETCH(-1, -1), nH = TAAU_FETCH(0, -1), nI = TAAU_FETCH(1, -1);
     #undef TAAU_FETCH
 
+    vec3 rawMn = min(min(min(nA, nB), min(nC, nD)),
+                     min(min(nE, nF), min(nG, min(nH, nI))));
+    vec3 rawMx = max(max(max(nA, nB), max(nC, nD)),
+                     max(max(nE, nF), max(nG, max(nH, nI))));
     vec3 mn = min(nB, min(min(nD, nE), min(nF, nH)));
     mn = 0.5 * (mn + min(mn, min(min(nA, nC), min(nG, nI))));
     vec3 mx = max(nB, max(max(nD, nE), max(nF, nH)));
@@ -123,6 +146,13 @@ void main() {
 
     vec3 cw = rgbToYcocg(taaTonemap(current));
     vec3 hw = rgbToYcocg(taaTonemap(hist));
+    bool currentClipped;
+    cw = taauClipAabb(cw, rawMn, rawMx, currentClipped);
+    float localPeak = max(max(max(taauYcocgPeak(nA), taauYcocgPeak(nB)),
+                              max(taauYcocgPeak(nC), taauYcocgPeak(nD))),
+                          max(max(taauYcocgPeak(nE), taauYcocgPeak(nF)),
+                              max(taauYcocgPeak(nG), max(taauYcocgPeak(nH), taauYcocgPeak(nI)))));
+    cw = rgbToYcocg(taauLimitPeak(ycocgToRgb(cw), localPeak));
 
     bool clipped;
     hw = taauClipAabb(hw, mn, mx, clipped);
@@ -132,18 +162,22 @@ void main() {
     alpha *= pow(confidence, TAAU_CONFIDENCE_REJECTION);
     alpha *= 1.0 - TAAU_FLICKER_REDUCTION * flicker;
     if (c0.a < 0.5) alpha = max(alpha, 0.85);
+    alpha = max(alpha, emissiveReactive * TAAU_EMISSIVE_REACTIVE);
+    alpha = max(alpha, portalReactive * TAAU_PORTAL_REACTIVE);
 
     vec2 pixOff = 1.0 - abs(2.0 * fract(viewSize * prevUV.xy) - 1.0);
     float offRej = sqrt(pixOff.x * pixOff.y) * TAAU_OFFCENTER_REJECTION + (1.0 - TAAU_OFFCENTER_REJECTION);
     alpha = 1.0 - (1.0 - alpha) * offRej;
 
-    vec3 resolvedW = ycocgToRgb(mix(hw, cw, saturate(alpha)));
-    vec3 resolved = min(taaUntonemap(max(resolvedW, vec3(0.0))), vec3(60000.0));
-    vec3 outW = max(resolvedW + (resolvedW - ycocgToRgb(mu)) * TAAU_OUTPUT_SHARPEN, vec3(0.0));
+    vec3 resolvedW = taauLimitPeak(ycocgToRgb(mix(hw, cw, saturate(alpha))), localPeak);
+    vec3 resolved = min(taaUntonemap(resolvedW), vec3(60000.0));
+    vec3 outW = resolvedW + (resolvedW - ycocgToRgb(mu)) * TAAU_OUTPUT_SHARPEN;
+    outW = taauLimitPeak(outW, localPeak);
 
     float ageOut = max(min(age * offRej, TAAU_MAX_AGE), 1.0);
+    ageOut = mix(ageOut, 1.0, portalReactive);
     outColor = vec4(min(taaUntonemap(outW), vec3(60000.0)), 1.0);
-    outHistory = vec4(resolved, reflectable > 0.5 ? ageOut : -ageOut);
+    outHistory = vec4(resolved, portalReactive < 0.5 && reflectable > 0.5 ? ageOut : -ageOut);
 }
 
 #else
@@ -157,7 +191,11 @@ void main() {
     current = max(current, vec3(0.0));
     float reflectable = texture(colortex2, uv).a > 2.5 ? 0.0 : 1.0;
 #ifndef TEMPORAL_AA
+  #ifdef FSR
+    outColor = vec4(min(taaTonemap(current), vec3(0.98)), 1.0);
+  #else
     outColor = vec4(current, 1.0);
+  #endif
     outHistory = vec4(current, reflectable);
 #else
     float depth = texture(depthtex0, uv).r;
@@ -181,14 +219,20 @@ void main() {
     }
 
     vec3 cw = taaTonemap(current);
-    vec3 m1 = cw, m2 = cw * cw;
     vec2 rMax = vec2(FSR_SCALE) - 0.5 * px;
+    vec3 m1 = vec3(0.0), m2 = vec3(0.0);
+    float nPeak = 0.0;
     for (int x = -1; x <= 1; x++)
     for (int y = -1; y <= 1; y++) {
         if (x == 0 && y == 0) continue;
         vec3 s = taaTonemap(texture(colortex0, clamp(ruv + vec2(x, y) * px, vec2(0.0), rMax)).rgb);
         m1 += s; m2 += s * s;
+        nPeak = max(nPeak, max3(s));
     }
+    float peakCap = nPeak * 1.25 + 1e-3;
+    float cwM = max3(cw);
+    if (cwM > peakCap) cw *= peakCap / cwM;
+    m1 += cw; m2 += cw * cw;
     vec3 mu = m1 / 9.0;
     vec3 sigma = sqrt(max(m2 / 9.0 - mu * mu, 0.0));
 #ifdef FSR
@@ -219,7 +263,11 @@ void main() {
     vec3 outW = resolvedW;
 #endif
     vec3 resolved = min(taaUntonemap(resolvedW), vec3(60000.0));
+#ifdef FSR
+    outColor = vec4(min(outW, vec3(0.98)), 1.0);
+#else
     outColor = vec4(min(taaUntonemap(outW), vec3(60000.0)), 1.0);
+#endif
     outHistory = vec4(resolved, reflectable);
 #endif
 }
