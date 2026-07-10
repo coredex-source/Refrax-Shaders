@@ -15,7 +15,7 @@ const float gaussW[5] = float[](0.2042, 0.1802, 0.1238, 0.0663, 0.0276);
 void main() {
     ivec2 texel = ivec2(gl_FragCoord.xy);
     vec2 viewSize = vec2(viewWidth, viewHeight);
-    ivec2 lo, hi;
+    ivec2 lo = ivec2(0), hi = ivec2(-1);
     int lvl = -1;
     for (int i = 0; i < BLOOM_LEVELS; i++) {
         lo = ivec2(0, int(viewSize.y * bloomLevelY(i) + 0.5));

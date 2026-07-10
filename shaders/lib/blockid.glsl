@@ -49,6 +49,15 @@ float emitterEmission(int id, float z) {
     return 0.4 * z3 * z;
 }
 
+float heldLightValue(int id, int lv) {
+    if (lv > 0) return float(lv);
+    return id == 10008 ? 15.0 : 0.0; // lava bucket casts light but is not a block item
+}
+vec3 heldLightColor(int id) {
+    vec3 c = (id >= 10001 && id <= 10029) ? blockLightColor(id) : vec3(0.0);
+    return dot(c, c) > 0.0 ? c : FALLBACK_BLOCKLIGHT;
+}
+
 bool isNoOcclude(int id) { return id >= 10050; }
 bool isFoliage(int id)   { return id >= 10050 && id <= 10059; }
 bool isWavingShort(int id) { return id == 10050; }

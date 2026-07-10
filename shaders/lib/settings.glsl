@@ -196,6 +196,7 @@ const float ambientOcclusionLevel = 1.0;
 
 #define BLOCKLIGHT_SCALE 2.2
 #define EMISSION_SCALE 16.0
+#define HAND_LIGHT_STRENGTH 1.0
 #define LPV_SEED 4.0
 #define FALLBACK_BLOCKLIGHT vec3(1.0, 0.60, 0.34)
 #define LPV_COLOR_SATURATION 0.95
