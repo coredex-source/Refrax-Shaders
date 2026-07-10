@@ -5,8 +5,10 @@
 #include "/lib/atmosphere.glsl"
 #include "/lib/water.glsl"
 #include "/lib/shadows.glsl"
-#if defined COLORED_LIGHTING && defined LPV_FOG
-#include "/lib/voxel.glsl"
+#ifdef LPV_FOG
+  #ifdef COLORED_LIGHTING
+    #include "/lib/voxel.glsl"
+  #endif
 #endif
 
 /* ---- Buffer formats ----
@@ -23,8 +25,10 @@ const bool colortex5Clear = false;
 uniform sampler2D colortex0;
 uniform sampler2D colortex2;
 uniform sampler2D depthtex0, depthtex1;
-#if defined COLORED_LIGHTING && defined LPV_FOG
-uniform sampler3D lpvSampler1;
+#ifdef LPV_FOG
+  #ifdef COLORED_LIGHTING
+    uniform sampler3D lpvSampler1;
+  #endif
 #endif
 uniform sampler2D shadowtex0, shadowtex1, shadowcolor0;
 uniform mat4 gbufferModelViewInverse, gbufferProjectionInverse;
@@ -126,7 +130,8 @@ void main() {
 #endif
 #endif
 
-#if defined COLORED_LIGHTING && defined LPV_FOG
+#ifdef LPV_FOG
+  #ifdef COLORED_LIGHTING
     {
         int steps = PERF_SCALED_COUNT(12, 4);
         float maxD = min(fogDist, LPV_FOG_DISTANCE);
@@ -143,6 +148,7 @@ void main() {
 #endif
         color += (glow / float(steps)) * maxD * media;
     }
+  #endif
 #endif
 
     if (isEyeInWater == 1) {

@@ -114,8 +114,10 @@ void main() {
     float ao = texture(colortex6, fsrRegionUV(uv, viewTexel)).r;
     float dither = ignAnim(gl_FragCoord.xy, frameCounter);
 
-#if defined DEBUG_LPV && defined COLORED_LIGHTING
+#ifdef DEBUG_LPV
+  #ifdef COLORED_LIGHTING
     { float dfade; outColor = vec4(sampleLPV(lpvSampler1, scenePos, cameraPosition, N, dfade), 1.0); return; }
+  #endif
 #endif
 
     float NoL = saturate(dot(N, lightDir));
