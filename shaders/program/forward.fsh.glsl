@@ -37,6 +37,7 @@ uniform float frameTimeCounter, rainStrength, viewWidth, viewHeight, near, far;
 uniform int frameCounter, isEyeInWater;
 uniform float alphaTestRef;
 uniform int heldBlockLightValue, heldBlockLightValue2;
+uniform int heldItemId, heldItemId2;
 #ifdef ENTITY
 uniform vec4 entityColor;
 #endif
@@ -79,10 +80,14 @@ vec3 blockLightAt(vec3 pos, vec3 N, float lmBlock) {
     vec3 light = fallback;
 #endif
 #ifdef HAND_LIGHT
-    float held = float(max(heldBlockLightValue, heldBlockLightValue2));
-    if (held > 0.0) {
+    {
         float d = length(pos);
-        light += FALLBACK_BLOCKLIGHT * pow(saturate(1.0 - d / held), 2.0) * held * 0.12;
+        float v1 = heldLightValue(heldItemId, heldBlockLightValue);
+        float v2 = heldLightValue(heldItemId2, heldBlockLightValue2);
+        if (v1 > 0.0) light += heldLightColor(heldItemId)
+            * (pow(saturate(1.0 - d / v1), 2.0) * v1 * (0.12 * HAND_LIGHT_STRENGTH));
+        if (v2 > 0.0) light += heldLightColor(heldItemId2)
+            * (pow(saturate(1.0 - d / v2), 2.0) * v2 * (0.12 * HAND_LIGHT_STRENGTH));
     }
 #endif
     return light;
@@ -209,7 +214,7 @@ void main() {
     vec3 lit = albedo.rgb * (lightCol * NoL * shadow + skyLight + blockLight + minAmb);
     float alpha = albedo.a;
   #if defined PBR_MATERIALS && !defined PARTICLE
-    lit += albedo.rgb * mat.emission * EMISSION_STRENGTH * 6.0;
+    lit += albedo.rgb * sqrt(albedo.rgb) * (mat.emission * EMISSION_STRENGTH * EMISSION_SCALE);
   #endif
 
   #ifdef WATER
@@ -240,7 +245,7 @@ void main() {
             vec3 hitScene = (gbufferModelViewInverse * vec4(hitView, 1.0)).xyz;
             vec3 prevUV = reprojectScene(hitScene, gbufferPreviousModelView, gbufferPreviousProjection, cameraPosition, previousCameraPosition);
             if (clamp(prevUV.xy, 0.0, 1.0) == prevUV.xy) {
-                vec4 hist = texture(colortex5, prevUV.xy);
+                vec4 hist = texture(colortex5, historyUV(prevUV.xy, 1.0 / vec2(viewWidth, viewHeight)));
                 refl = mix(refl, hist.rgb, hitS * saturate(hist.a));
             }
         }
@@ -317,7 +322,7 @@ void main() {
 
             vec3 portalTex = mix(texA.rgb, texB.rgb, 0.35);
             vec3 portal = srgbToLinear(portalTex * tint) * (2.0 + 2.5 * veil) + srgbToLinear(tint) * (0.35 + 0.55 * sheet);
-            lit = portal * (3.8 * EMISSION_STRENGTH) + portal * blockLight * 0.12;
+            lit = portal * (NETHER_PORTAL_BRIGHTNESS * EMISSION_STRENGTH) + portal * blockLight * 0.12;
             alpha = saturate(max(texA.a, texB.a) * (0.68 + 0.26 * veil));
             alpha *= smoothstep(0.08, 0.55, length(scenePos));
         }

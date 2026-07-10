@@ -2,6 +2,7 @@
 
 #include "/lib/settings.glsl"
 #include "/lib/common.glsl"
+#include "/lib/blockid.glsl"
 #include "/lib/atmosphere.glsl"
 #include "/lib/shadows.glsl"
 #include "/lib/voxel.glsl"
@@ -32,6 +33,7 @@ uniform float frameTimeCounter, rainStrength, viewWidth, viewHeight;
 uniform float nightVision;
 uniform int frameCounter, isEyeInWater;
 uniform int heldBlockLightValue, heldBlockLightValue2;
+uniform int heldItemId, heldItemId2;
 
 in vec2 uv;
 
@@ -66,16 +68,21 @@ vec3 blockLightAt(vec3 pos, vec3 N, float lmBlock) {
     vec3 light = fallback;
 #endif
 #ifdef HAND_LIGHT
-    float held = float(max(heldBlockLightValue, heldBlockLightValue2));
-    if (held > 0.0) {
+    {
         float d = length(pos);
-        light += FALLBACK_BLOCKLIGHT * pow(saturate(1.0 - d / held), 2.0) * held * 0.12;
+        float v1 = heldLightValue(heldItemId, heldBlockLightValue);
+        float v2 = heldLightValue(heldItemId2, heldBlockLightValue2);
+        if (v1 > 0.0) light += heldLightColor(heldItemId)
+            * (pow(saturate(1.0 - d / v1), 2.0) * v1 * (0.12 * HAND_LIGHT_STRENGTH));
+        if (v2 > 0.0) light += heldLightColor(heldItemId2)
+            * (pow(saturate(1.0 - d / v2), 2.0) * v2 * (0.12 * HAND_LIGHT_STRENGTH));
     }
 #endif
     return light;
 }
 
 void main() {
+    vec2 viewTexel = 1.0 / vec2(viewWidth, viewHeight);
     vec4 prev = texture(colortex0, uv);
     if (prev.a > 0.15 && prev.a < 0.85) { outColor = lineOverlay(prev); return; }
 
@@ -88,7 +95,7 @@ void main() {
 
     if (depth >= 1.0) {
         vec3 sky = dimensionSky(dirW, sunDir, fogColor, frameTimeCounter, rainStrength);
-        vec4 clouds = texture(colortex4, uv);
+        vec4 clouds = texture(colortex4, fsrRegionUV(uv, viewTexel));
         sky = sky * clouds.a + clouds.rgb;
         outColor = lineOverlay(vec4(sky, 1.0));
         return;
@@ -104,7 +111,7 @@ void main() {
     vec2 lm = c3.xy;
     float roughness = c3.z;
     float f0raw = c3.w;
-    float ao = texture(colortex6, uv).r;
+    float ao = texture(colortex6, fsrRegionUV(uv, viewTexel)).r;
     float dither = ignAnim(gl_FragCoord.xy, frameCounter);
 
 #if defined DEBUG_LPV && defined COLORED_LIGHTING
@@ -149,7 +156,7 @@ void main() {
 #endif
 
     vec3 color = albedo * diffuse;
-    color += albedo * emission * EMISSION_STRENGTH * 6.0;
+    color += albedo * sqrt(albedo) * (emission * EMISSION_STRENGTH * EMISSION_SCALE);
 
 #if defined PBR_MATERIALS || REFLECTION_MODE > 0
     vec3 V = -dirW;
@@ -179,7 +186,7 @@ void main() {
                 vec3 hitScene = (gbufferModelViewInverse * vec4(hitView, 1.0)).xyz;
                 vec3 prevUV = reprojectScene(hitScene, gbufferPreviousModelView, gbufferPreviousProjection, cameraPosition, previousCameraPosition);
                 if (clamp(prevUV.xy, 0.0, 1.0) == prevUV.xy) {
-                    vec4 hist = texture(colortex5, prevUV.xy);
+                    vec4 hist = texture(colortex5, historyUV(prevUV.xy, viewTexel));
                     refl = mix(refl, hist.rgb, hitS * saturate(hist.a));
                 }
             }

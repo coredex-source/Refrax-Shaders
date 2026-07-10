@@ -5,6 +5,9 @@
 #include "/lib/atmosphere.glsl"
 #include "/lib/water.glsl"
 #include "/lib/shadows.glsl"
+#if defined COLORED_LIGHTING && defined LPV_FOG
+#include "/lib/voxel.glsl"
+#endif
 
 /* ---- Buffer formats ----
 const int colortex0Format = RGBA16F;
@@ -20,6 +23,9 @@ const bool colortex5Clear = false;
 uniform sampler2D colortex0;
 uniform sampler2D colortex2;
 uniform sampler2D depthtex0, depthtex1;
+#if defined COLORED_LIGHTING && defined LPV_FOG
+uniform sampler3D lpvSampler1;
+#endif
 uniform sampler2D shadowtex0, shadowtex1, shadowcolor0;
 uniform mat4 gbufferModelViewInverse, gbufferProjectionInverse;
 uniform mat4 shadowModelView, shadowProjection;
@@ -35,6 +41,16 @@ in vec2 uv;
 
 /* RENDERTARGETS: 0 */
 layout(location = 0) out vec4 outColor;
+
+#ifdef UPSCALING
+vec4 sampleSceneScaled(vec2 suv, vec2 px) {
+    vec2 r = px * (0.5 * max(1.0 / UPSCALE_SCALE - 1.0, 0.0));
+    return 0.25 * (texture(colortex0, suv + vec2(-r.x, -r.y)) +
+                   texture(colortex0, suv + vec2( r.x, -r.y)) +
+                   texture(colortex0, suv + vec2(-r.x,  r.y)) +
+                   texture(colortex0, suv + vec2( r.x,  r.y)));
+}
+#endif
 
 void main() {
     vec2 suv = uv;
@@ -63,7 +79,11 @@ void main() {
         suv = clamp(suv + wave * (0.0014 + 0.0007 * eyeSkyPre) * UNDERWATER_DISTORTION, vec2(0.001), vec2(0.999));
         depth0 = texture(depthtex0, suv).r;
     }
+#ifdef UPSCALING
+    vec4 c0 = sampleSceneScaled(suv, 1.0 / vec2(viewWidth, viewHeight));
+#else
     vec4 c0 = texture(colortex0, suv);
+#endif
     vec3 color = c0.rgb;
 
     vec3 viewPos = screenToView(vec3(uv, depth0), gbufferProjectionInverse);
@@ -104,6 +124,25 @@ void main() {
         }
     }
 #endif
+#endif
+
+#if defined COLORED_LIGHTING && defined LPV_FOG
+    {
+        int steps = PERF_SCALED_COUNT(12, 4);
+        float maxD = min(fogDist, LPV_FOG_DISTANCE);
+        float dt = maxD / float(steps);
+        vec3 glow = vec3(0.0);
+        for (int i = 0; i < steps; i++) {
+            vec3 p = dirW * (dt * (float(i) + dither));
+            float fade;
+            glow += sampleLPV(lpvSampler1, p, cameraPosition, vec3(0.0), fade) * fade;
+        }
+        float media = LPV_FOG_DENSITY * (1.0 + rainStrength) * LPV_FOG_STRENGTH;
+#ifdef WORLD_NETHER
+        media *= 0.5;
+#endif
+        color += (glow / float(steps)) * maxD * media;
+    }
 #endif
 
     if (isEyeInWater == 1) {

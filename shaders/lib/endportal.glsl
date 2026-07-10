@@ -7,50 +7,50 @@
 #include "/lib/noise.glsl"
 
 #if END_PORTAL_STYLE == 0
-#define EP_BASE     vec3(0.004, 0.010, 0.009)
-#define EP_NEB      vec3(0.008, 0.026, 0.020)
-#define EP_DENSITY  0.72
-#define EP_GAIN     0.80
+#define EP_BASE vec3(0.004, 0.010, 0.009)
+#define EP_NEB vec3(0.008, 0.026, 0.020)
+#define EP_DENSITY 0.72
+#define EP_GAIN 0.80
 const vec3 EP_PALETTE[8] = vec3[8](
     vec3(0.30, 0.80, 0.55), vec3(0.25, 0.70, 0.50),
     vec3(0.40, 0.90, 0.65), vec3(0.20, 0.60, 0.45),
     vec3(0.35, 0.85, 0.70), vec3(0.28, 0.75, 0.48),
     vec3(0.45, 0.95, 0.75), vec3(0.22, 0.65, 0.55));
 #elif END_PORTAL_STYLE == 2
-#define EP_BASE     vec3(0.004, 0.006, 0.016)
-#define EP_NEB      vec3(0.009, 0.015, 0.040)
-#define EP_DENSITY  0.72
-#define EP_GAIN     0.90
+#define EP_BASE vec3(0.004, 0.006, 0.016)
+#define EP_NEB vec3(0.009, 0.015, 0.040)
+#define EP_DENSITY 0.72
+#define EP_GAIN 0.90
 const vec3 EP_PALETTE[8] = vec3[8](
     vec3(0.55, 0.70, 1.00), vec3(0.75, 0.85, 1.00),
     vec3(0.40, 0.55, 0.95), vec3(0.90, 0.95, 1.00),
     vec3(0.50, 0.65, 1.00), vec3(0.65, 0.80, 1.00),
     vec3(0.35, 0.50, 0.90), vec3(0.80, 0.90, 1.00));
 #elif END_PORTAL_STYLE == 3
-#define EP_BASE     vec3(0.012, 0.005, 0.022)
-#define EP_NEB      vec3(0.036, 0.010, 0.055)
-#define EP_DENSITY  0.72
-#define EP_GAIN     1.00
+#define EP_BASE vec3(0.012, 0.005, 0.022)
+#define EP_NEB vec3(0.036, 0.010, 0.055)
+#define EP_DENSITY 0.72
+#define EP_GAIN 1.00
 const vec3 EP_PALETTE[8] = vec3[8](
     vec3(0.60, 0.35, 0.95), vec3(0.75, 0.40, 0.90),
     vec3(0.50, 0.30, 0.90), vec3(0.85, 0.45, 0.85),
     vec3(0.65, 0.30, 1.00), vec3(0.90, 0.50, 0.95),
     vec3(0.55, 0.25, 0.85), vec3(0.80, 0.35, 0.80));
 #elif END_PORTAL_STYLE == 4
-#define EP_BASE     vec3(0.003, 0.003, 0.006)
-#define EP_NEB      vec3(0.007, 0.008, 0.014)
-#define EP_DENSITY  0.86
-#define EP_GAIN     0.55
+#define EP_BASE vec3(0.003, 0.003, 0.006)
+#define EP_NEB vec3(0.007, 0.008, 0.014)
+#define EP_DENSITY 0.86
+#define EP_GAIN 0.55
 const vec3 EP_PALETTE[8] = vec3[8](
     vec3(0.55, 0.60, 0.70), vec3(0.65, 0.70, 0.80),
     vec3(0.45, 0.50, 0.65), vec3(0.70, 0.75, 0.85),
     vec3(0.50, 0.55, 0.70), vec3(0.60, 0.65, 0.78),
     vec3(0.40, 0.45, 0.60), vec3(0.68, 0.72, 0.82));
 #else
-#define EP_BASE     vec3(0.010, 0.006, 0.028)
-#define EP_NEB      vec3(0.030, 0.012, 0.060)
-#define EP_DENSITY  0.72
-#define EP_GAIN     1.00
+#define EP_BASE vec3(0.010, 0.006, 0.028)
+#define EP_NEB vec3(0.030, 0.012, 0.060)
+#define EP_DENSITY 0.72
+#define EP_GAIN 1.00
 const vec3 EP_PALETTE[8] = vec3[8](
     vec3(0.30, 0.75, 0.65), vec3(0.35, 0.60, 0.90),
     vec3(0.25, 0.80, 0.85), vec3(0.30, 0.45, 1.00),
