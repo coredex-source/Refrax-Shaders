@@ -129,7 +129,7 @@ void main() {
     vec3 cW = processPixel(uv + vec2(-px.x, 0.0), bloom, exposure);
 #endif
 
-#if defined FXAA && !(defined FSR && defined TEMPORAL_AA)
+#if defined FXAA && !(defined UPSCALING && defined TEMPORAL_AA)
     {
         float lC = luminance(color);
         float lN = luminance(cN), lS = luminance(cS), lE = luminance(cE), lW = luminance(cW);

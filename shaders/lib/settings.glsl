@@ -13,7 +13,7 @@
 //#define POM
 #define PERFORMANCE_MODE 3  //[1 2 3 4 5 6 7] 1=off 2=low 3=medium 4=high 5=very_high 6=extreme 7=overdrive
 #define WAVING_PLANTS
-#define END_PORTAL_STYLE 1  //[0 1 2 3 4] 0=classic 1=vibrant 2=deep_space 3=amethyst 4=void
+#define END_PORTAL_STYLE 4  //[0 1 2 3 4] 0=emerald 1=vibrant 2=deep_space 3=amethyst 4=void
 #define WATER_WAVES
 //#define WATER_NOISY_WAVES
 #define HAND_LIGHT
@@ -72,24 +72,60 @@
 #define TONEMAP_OPERATOR 1  //[0 1 2 3] 0=AgX 1=ACES 2=Reinhard-Jodie 3=Uncharted2
 #define SHARPEN_MODE 2      //[0 1 2] 0=off 1=CAS 2=RCAS
 
-//#define FSR
-#define FSR_QUALITY 2       //[1 2 3 4 5] 1=ultra_quality 2=quality 3=balanced 4=performance 5=ultra_performance
+#define UPSCALER 0          //[0 1 2] 0=off 1=TAAU 2=FSR1
+#define UPSCALE_RES 75      //[30 35 40 45 50 55 60 65 70 75 80 85 90 95 100] internal resolution %
 
-#ifdef FSR
-  #if FSR_QUALITY == 1
-    #define FSR_SCALE 0.77
-  #elif FSR_QUALITY == 2
-    #define FSR_SCALE 0.67
-  #elif FSR_QUALITY == 3
-    #define FSR_SCALE 0.59
-  #elif FSR_QUALITY == 4
-    #define FSR_SCALE 0.50
+#if UPSCALER == 1
+  #define TAAU
+  #ifndef TEMPORAL_AA
+    #define TAA
+    #define TEMPORAL_AA
+  #endif
+#elif UPSCALER == 2
+  #define FSR
+#endif
+
+#if defined TAAU || defined FSR
+  #define UPSCALING
+#endif
+
+#ifdef UPSCALING
+  #if UPSCALE_RES == 30
+    #define UPSCALE_SCALE 0.30
+  #elif UPSCALE_RES == 35
+    #define UPSCALE_SCALE 0.35
+  #elif UPSCALE_RES == 40
+    #define UPSCALE_SCALE 0.40
+  #elif UPSCALE_RES == 45
+    #define UPSCALE_SCALE 0.45
+  #elif UPSCALE_RES == 50
+    #define UPSCALE_SCALE 0.50
+  #elif UPSCALE_RES == 55
+    #define UPSCALE_SCALE 0.55
+  #elif UPSCALE_RES == 60
+    #define UPSCALE_SCALE 0.60
+  #elif UPSCALE_RES == 65
+    #define UPSCALE_SCALE 0.65
+  #elif UPSCALE_RES == 70
+    #define UPSCALE_SCALE 0.70
+  #elif UPSCALE_RES == 75
+    #define UPSCALE_SCALE 0.75
+  #elif UPSCALE_RES == 80
+    #define UPSCALE_SCALE 0.80
+  #elif UPSCALE_RES == 85
+    #define UPSCALE_SCALE 0.85
+  #elif UPSCALE_RES == 90
+    #define UPSCALE_SCALE 0.90
+  #elif UPSCALE_RES == 95
+    #define UPSCALE_SCALE 0.95
   #else
-    #define FSR_SCALE 0.33
+    #define UPSCALE_SCALE 1.0
   #endif
 #else
-  #define FSR_SCALE 1.0
+  #define UPSCALE_SCALE 1.0
 #endif
+
+#define FSR_SCALE UPSCALE_SCALE
 
 #define VL_STEPS 12          // [4 6 8 12 16 24 32 48]
 #define CLOUD_STEPS 12       // [6 8 12 16 20 24 32 48 64]
@@ -171,6 +207,12 @@ const float ambientOcclusionLevel = 1.0;
 
 #define TAA_BLEND 0.90
 #define TAA_CLIP_GAMMA 1.25
+
+#define TAAU_OUTPUT_SHARPEN 0.35
+#define TAAU_CONFIDENCE_REJECTION 5.0
+#define TAAU_FLICKER_REDUCTION 1.0
+#define TAAU_OFFCENTER_REJECTION 0.25
+#define TAAU_MAX_AGE 64.0
 
 #define SMAA_EDGE_THRESHOLD 0.10
 #define SMAA_SEARCH_STEPS 8

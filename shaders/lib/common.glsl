@@ -37,11 +37,22 @@ vec3 reprojectScene(vec3 scenePos, mat4 prevMV, mat4 prevProj, vec3 camPos, vec3
     return clip.xyz / clip.w * 0.5 + 0.5;
 }
 
+#ifndef UPSCALE_SCALE
+#define UPSCALE_SCALE 1.0
+#endif
 #ifndef FSR_SCALE
-#define FSR_SCALE 1.0
+#define FSR_SCALE UPSCALE_SCALE
 #endif
 vec2 fsrRegionUV(vec2 sceneUV, vec2 texel) {
     return clamp(sceneUV * FSR_SCALE, vec2(0.0), vec2(FSR_SCALE) - 0.5 * texel);
+}
+
+vec2 historyUV(vec2 sceneUV, vec2 texel) {
+#ifdef TAAU
+    return sceneUV;
+#else
+    return fsrRegionUV(sceneUV, texel);
+#endif
 }
 
 vec2 taaOffset(int frame) {
@@ -50,8 +61,14 @@ vec2 taaOffset(int frame) {
         vec2(0.6250, 0.7778), vec2(0.3750, 0.2222), vec2(0.8750, 0.5556), vec2(0.0625, 0.8889));
     return halton[frame % 8] - 0.5;
 }
+vec2 taauOffset(int frame) {
+    const vec2 r2 = vec2(0.7548776662466927, 0.5698402909980532);
+    return fract(r2 * float(frame % 64 + 1)) - 0.5;
+}
 vec4 taaJitterPos(vec4 clipPos, vec2 viewSize, int frame) {
-#ifdef TEMPORAL_AA
+#ifdef TAAU
+    clipPos.xy += taauOffset(frame) * 2.0 * clipPos.w / (viewSize * UPSCALE_SCALE);
+#elif defined TEMPORAL_AA
     clipPos.xy += taaOffset(frame) * 2.0 * clipPos.w / viewSize;
 #endif
     return clipPos;
