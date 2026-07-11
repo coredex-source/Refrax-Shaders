@@ -100,9 +100,17 @@ void main() {
         bool lodPixel = false;
 #ifdef LOD_ACTIVE
         if (closest.z >= 1.0) {
-            float lodDepth = texelFetch(lodDepthTex0, ivec2(closest.xy), 0).r;
+            ivec2 lodT = ivec2(closest.xy);
+            float lodDepth = texelFetch(lodDepthTex0, lodT, 0).r;
+            for (int i = 0; i < 4; i++) {
+                ivec2 o = ivec2(((i & 1) == 0) ? -2 : 2, (i < 2) ? -2 : 2);
+                ivec2 t = clamp(t0 + o, ivec2(0), tmax);
+                float d = texelFetch(lodDepthTex0, t, 0).r;
+                if (d < lodDepth) { lodDepth = d; lodT = t; }
+            }
             if (lodDepth < 1.0) {
                 lodPixel = true;
+                closestUV = (vec2(lodT) + 0.5) * px;
                 viewPos = screenToView(vec3(closestUV, lodDepth), lodProjectionInverse);
                 vec3 lodScene = (gbufferModelViewInverse * vec4(viewPos, 1.0)).xyz;
                 reproj = reprojectScene(lodScene, gbufferPreviousModelView, lodPreviousProjection, cameraPosition, previousCameraPosition);
@@ -221,11 +229,19 @@ void main() {
         prevUV = vec3(uv, depth);
     } else if (depth >= 1.0) {
 #ifdef LOD_ACTIVE
+        vec2 lodUV = uv;
         float lodDepth = texture(lodDepthTex0, uv).r;
+        for (int i = 0; i < 4; i++) {
+            vec2 tuv = clamp(uv + vec2(((i & 1) == 0) ? -2.0 : 2.0, (i < 2) ? -2.0 : 2.0) * px,
+                             vec2(0.0), vec2(1.0));
+            float d = texture(lodDepthTex0, tuv).r;
+            if (d < lodDepth) { lodDepth = d; lodUV = tuv; }
+        }
         if (lodDepth < 1.0) {
-            vec3 viewPos = screenToView(vec3(uv, lodDepth), lodProjectionInverse);
+            vec3 viewPos = screenToView(vec3(lodUV, lodDepth), lodProjectionInverse);
             vec3 scenePos = (gbufferModelViewInverse * vec4(viewPos, 1.0)).xyz;
-            prevUV = reprojectScene(scenePos, gbufferPreviousModelView, lodPreviousProjection, cameraPosition, previousCameraPosition);
+            vec3 reproj = reprojectScene(scenePos, gbufferPreviousModelView, lodPreviousProjection, cameraPosition, previousCameraPosition);
+            prevUV = vec3(uv - (lodUV - reproj.xy), reproj.z);
         } else
 #endif
         {

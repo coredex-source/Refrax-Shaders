@@ -5,7 +5,6 @@
 #include "/lib/noise.glsl"
 #include "/lib/blockid.glsl"
 #include "/lib/labpbr.glsl"
-#include "/lib/dh.glsl"
 
 layout(location = 0) out vec4 outAlbedo;
 layout(location = 1) out vec4 outNormal;
@@ -24,14 +23,18 @@ void voxy_emitFragment(VoxyFragmentParameters p) {
     vec2 lm = saturate(p.lightMap);
 
 #ifdef DH_NOISE
-    vec4 v = vxProjInv * vec4(gl_FragCoord.xy / refraxViewSize * 2.0 - 1.0,
-                              gl_FragCoord.z * 2.0 - 1.0, 1.0);
+    mat4 projInv = mat4(refraxVxProjInv0, refraxVxProjInv1,
+                        refraxVxProjInv2, refraxVxProjInv3);
+    mat4 modelViewInv = mat4(refraxModelViewInv0, refraxModelViewInv1,
+                             refraxModelViewInv2, refraxModelViewInv3);
+    vec4 v = projInv * vec4(gl_FragCoord.xy / refraxViewSize * 2.0 - 1.0,
+                            gl_FragCoord.z * 2.0 - 1.0, 1.0);
     if (abs(v.w) > 1e-8) {
-        vec3 scenePos = (gbufferModelViewInverse * vec4(v.xyz / v.w, 1.0)).xyz;
+        vec3 scenePos = (modelViewInv * vec4(v.xyz / v.w, 1.0)).xyz;
         float dist = length(scenePos);
-        vec3 wp = scenePos + cameraPosition;
+        vec3 wp = scenePos + refraxCameraPosition;
         float grain = vnoise3(wp * 0.55) * 0.65 + vnoise3(wp * 2.2) * 0.35;
-        float grainAmp = 0.12 * (1.0 - smoothstep(far, far * 4.0, dist));
+        float grainAmp = 0.12 * (1.0 - smoothstep(refraxFar, refraxFar * 4.0, dist));
         albedo *= 1.0 + (grain - 0.5) * grainAmp;
     }
 #endif

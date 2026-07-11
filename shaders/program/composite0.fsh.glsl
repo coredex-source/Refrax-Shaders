@@ -21,11 +21,17 @@ const int colortex4Format = RGBA16F;
 const int colortex5Format = RGBA16F;
 const int colortex6Format = R8;
 const int colortex8Format = RGBA16F;
+const int colortex9Format = RGBA16F;
 */
 const bool colortex5Clear = false;
+const bool colortex9Clear = true;
+const vec4 colortex9ClearColor = vec4(0.0, 0.0, 0.0, 0.0);
 
 uniform sampler2D colortex0;
 uniform sampler2D colortex2;
+#ifdef VOXY
+uniform sampler2D colortex9;
+#endif
 uniform sampler2D depthtex0, depthtex1;
 #ifdef LPV_FOG
   #ifdef COLORED_LIGHTING
@@ -68,6 +74,12 @@ void main() {
 
     vec4 waterData = texture(colortex2, suv);
     bool waterMask = waterData.a > 1.5 && waterData.a < 2.5;
+#ifdef VOXY
+    vec4 voxyWaterData = texture(colortex9, suv);
+    bool voxyWaterMask = voxyWaterData.a > 1.5 && voxyWaterData.a < 2.5;
+    if (voxyWaterMask) waterData = voxyWaterData;
+    waterMask = waterMask || voxyWaterMask;
+#endif
     bool isWater = waterMask && depth1 > depth0;
     bool lodWater = false;
 #ifdef LOD_ACTIVE

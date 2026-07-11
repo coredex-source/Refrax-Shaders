@@ -5,9 +5,9 @@
 #include "/lib/noise.glsl"
 #include "/lib/atmosphere.glsl"
 #include "/lib/water.glsl"
-#include "/lib/dh.glsl"
 
 layout(location = 0) out vec4 outLayer;
+layout(location = 1) out vec4 outWaterData;
 
 #ifdef WORLD_NETHER
 const vec3 VOXY_NETHER_FOG = vec3(0.23, 0.08, 0.05);
@@ -15,10 +15,18 @@ const vec3 VOXY_NETHER_FOG = vec3(0.23, 0.08, 0.05);
 
 void voxy_emitFragment(VoxyFragmentParameters p) {
     vec2 suv = gl_FragCoord.xy / refraxViewSize;
-    vec4 v = vxProjInv * vec4(suv * 2.0 - 1.0, gl_FragCoord.z * 2.0 - 1.0, 1.0);
-    if (abs(v.w) < 1e-8) { outLayer = vec4(0.0); return; }
+    mat4 projInv = mat4(refraxVxProjInv0, refraxVxProjInv1,
+                        refraxVxProjInv2, refraxVxProjInv3);
+    mat4 modelViewInv = mat4(refraxModelViewInv0, refraxModelViewInv1,
+                             refraxModelViewInv2, refraxModelViewInv3);
+    vec4 v = projInv * vec4(suv * 2.0 - 1.0, gl_FragCoord.z * 2.0 - 1.0, 1.0);
+    if (abs(v.w) < 1e-8) {
+        outLayer = vec4(0.0);
+        outWaterData = vec4(0.0);
+        return;
+    }
     vec3 viewPos = v.xyz / v.w;
-    vec3 scenePos = (gbufferModelViewInverse * vec4(viewPos, 1.0)).xyz;
+    vec3 scenePos = (modelViewInv * vec4(viewPos, 1.0)).xyz;
     float dist = length(scenePos);
 
     vec4 base = p.sampledColour * p.tinting;
@@ -35,9 +43,9 @@ void voxy_emitFragment(VoxyFragmentParameters p) {
     vec3 viewDirW = normalize(-scenePos);
 
     if (water && N.y > 0.5) {
-        vec3 worldPos = scenePos + cameraPosition;
+        vec3 worldPos = scenePos + refraxCameraPosition;
         float vDot = abs(dot(N, viewDirW));
-        N = waterNormal(worldPos.xz, frameTimeCounter, vDot, lm.y, rainStrength);
+        N = waterNormal(worldPos.xz, refraxFrameTimeCounter, vDot, lm.y, rainStrength);
     }
 
     float NoL = saturate(dot(N, lightDir));
@@ -65,9 +73,9 @@ void voxy_emitFragment(VoxyFragmentParameters p) {
     float fres = saturate(fresnelSchlick(saturate(dot(viewDirW, N)), vec3(0.02)).x * 1.35 + 0.015);
     vec3 reflDirW = reflect(-viewDirW, N);
 #if defined WORLD_NETHER
-    vec3 refl = dimensionSky(reflDirW, sunDir, VOXY_NETHER_FOG, frameTimeCounter, rainStrength);
+    vec3 refl = dimensionSky(reflDirW, sunDir, VOXY_NETHER_FOG, refraxFrameTimeCounter, rainStrength);
 #elif defined WORLD_END
-    vec3 refl = dimensionSky(reflDirW, sunDir, vec3(0.0), frameTimeCounter, rainStrength);
+    vec3 refl = dimensionSky(reflDirW, sunDir, vec3(0.0), refraxFrameTimeCounter, rainStrength);
 #else
     vec3 refl = skyGradient(reflDirW, sunDir, rainStrength) * pow(lm.y, 2.0);
 #endif
@@ -82,7 +90,7 @@ void voxy_emitFragment(VoxyFragmentParameters p) {
     float alpha;
     if (water) {
         float dBack = texelFetch(vxDepthTexOpaque, ivec2(gl_FragCoord.xy), 0).r;
-        vec3 backView = screenToView(vec3(suv, dBack), vxProjInv);
+        vec3 backView = screenToView(vec3(suv, dBack), projInv);
         float waterDepth = max(length(backView) - dist, 0.0);
         vec3 trans = waterTransmittanceTinted(tint, waterDepth);
 
@@ -91,11 +99,13 @@ void voxy_emitFragment(VoxyFragmentParameters p) {
         body = mix(body, body * 0.45, saturate(1.0 - trans.g));
         lit = mix(body, refl, fres) + sunSpec * 1.5;
         alpha = saturate(0.16 + (1.0 - trans.g) * 0.46 + fres * 0.55);
+        outWaterData = vec4(N, 2.0);
     } else {
         vec3 albedo = srgbToLinear(base.rgb);
         lit = albedo * (lightCol * NoL * shadow + skyLight + blockLight + minAmb);
         lit += refl * fres * 0.8 + sunSpec * 0.5;
         alpha = max(base.a, fres * 0.5);
+        outWaterData = vec4(0.0);
     }
 
     outLayer = vec4(lit * alpha, alpha);
