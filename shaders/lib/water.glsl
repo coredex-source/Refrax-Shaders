@@ -3,143 +3,60 @@
 #define REFRAX_WATER
 
 #include "/lib/settings.glsl"
+#include "/lib/common.glsl"
+
+float waterWaveField(sampler2D noiseTex, vec2 p, float t, float detailFade) {
+    const mat2 turn = mat2(0.8192, 0.5736, -0.5736, 0.8192);
+    vec2 wind = vec2(0.91, 0.42);
+
+    vec2 broadUV = p * vec2(0.0054, 0.0062) - wind * (t * 0.0032);
+    float broad = texture(noiseTex, broadUV).g;
+
+    vec2 detailUV = (turn * p) * vec2(0.021, 0.018) + vec2(-wind.y, wind.x) * (t * 0.0085);
+    float detail = texture(noiseTex, detailUV).r;
+    detail = detail * detail * (3.0 - 2.0 * detail);
+
+    float field = mix(broad, detail, 0.30 * detailFade);
 #ifdef WATER_NOISY_WAVES
-#include "/lib/noise.glsl"
+    vec2 microUV = (transpose(turn) * p) * vec2(0.043, 0.051) - wind.yx * (t * 0.013);
+    float micro = texture(noiseTex, microUV).b;
+    field = mix(field, micro, 0.10 * detailFade);
 #endif
-
-const int WATER_RIPPLE_OCTAVES = PERF_SCALED_CONST(4);
-const int WATER_NOISY_RIPPLE_OCTAVES = PERF_SCALED_CONST(6);
-
-float waterCrest(float phase) {
-    float s = sin(phase) * 0.5 + 0.5;
-    return s * s * (3.0 - 2.0 * s);
+    return field;
 }
 
-float waterCrestDeriv(float phase) {
-    float s = sin(phase) * 0.5 + 0.5;
-    return 3.0 * s * (1.0 - s) * cos(phase);
-}
-
-vec3 waterWaveLayer(vec2 p, vec2 dir, float freq, float speed, float amp, float phase, float wt) {
-    float x = dot(p, dir) * freq - wt * speed + phase;
-    float h = (waterCrest(x) - 0.5) * amp;
-    vec2 grad = dir * (waterCrestDeriv(x) * freq * amp);
-    return vec3(h, grad);
-}
-
-vec3 waterSwellSample(vec2 p, float t) {
-    float wt = t * WAVE_SPEED;
-    vec3 s = vec3(0.0);
-
-    s += waterWaveLayer(p, vec2(0.819, 0.574), 0.82, 0.78, 0.72, 0.0, wt);
-    s += waterWaveLayer(p, vec2(-0.454, 0.891), 0.48, 0.52, 0.42, 1.7, wt);
-
-    float x = dot(p, vec2(0.073, -0.052)) + wt * 0.27 + 2.4;
-    s.x += sin(x) * 0.14;
-    s.yz += vec2(0.073, -0.052) * (cos(x) * 0.14);
-    return s;
-}
-
-float waterSwellField(vec2 p, float t) {
-    return waterSwellSample(p, t).x;
-}
-
-#ifdef WATER_NOISY_WAVES
-float waterNoisySwellField(vec2 p, float t) {
-    float wt = t * WAVE_SPEED;
-    float slow = fbm3(vec3(p * 0.018, wt * 0.035), 3) - 0.5;
-    vec2 drift = vec2(slow, -slow) * 0.45;
-
-    float h = 0.0;
-    h += (waterCrest(dot(p + drift, vec2(0.819, 0.574)) * 0.82 - wt * 0.78 + slow * 2.2) - 0.5) * 0.72;
-    h += (waterCrest(dot(p - drift, vec2(-0.454, 0.891)) * 0.48 - wt * 0.52 + 1.7 - slow * 2.5) - 0.5) * 0.42;
-    h += sin(dot(p, vec2(0.073, -0.052)) + wt * 0.27 + slow * 3.1) * 0.14;
-    return h;
-}
-
-float waterNoisyRippleField(vec2 p, float t) {
-    float wt = t * WAVE_SPEED;
-    float warp = fbm3(vec3(p * 0.026, wt * 0.055), 3) - 0.5;
-    vec2 q = p + vec2(warp, -warp) * 0.55;
-
-    const mat2 rot = mat2(-0.275637, 0.961262, -0.961262, -0.275637);
-    vec2 dir = vec2(0.899, 0.438);
-    float h = waterNoisySwellField(p, t) * 0.35;
-    float amp = 1.0;
-    float sum = 0.35;
-    float freq = 1.25;
-
-    for (int i = 0; i < WATER_NOISY_RIPPLE_OCTAVES; i++) {
-        float fi = float(i);
-        float n = vnoise3(vec3(q * (0.045 + freq * 0.012) + fi * vec2(2.17, 5.83), wt * 0.06 + fi * 9.1));
-        float phase = (n - 0.5) * 4.8;
-        float c = waterCrest(dot(q, dir) * freq - wt * (0.92 + fi * 0.18) + phase);
-
-        h += (c - 0.5) * amp;
-        sum += amp;
-        amp *= 0.52;
-        freq *= 1.68;
-        q += dir * (0.19 + fi * 0.03);
-        dir = rot * dir;
-    }
-
-    return h / sum;
-}
-#endif
-
-vec3 waterRippleSample(vec2 p, float t) {
-    float wt = t * WAVE_SPEED;
-    const mat2 rot = mat2(-0.275637, 0.961262, -0.961262, -0.275637);
-    vec2 dir = vec2(0.899, 0.438);
-    vec3 wave = waterSwellSample(p, t) * 0.35;
-    float amp = 1.0;
-    float sum = 0.35;
-    float freq = 1.25;
-
-    for (int i = 0; i < WATER_RIPPLE_OCTAVES; i++) {
-        float fi = float(i);
-        wave += waterWaveLayer(p + dir * (0.17 + fi * 0.09), dir, freq, 0.92 + fi * 0.18, amp, fi * 2.37, wt);
-        sum += amp;
-        amp *= 0.50;
-        freq *= 1.62;
-        dir = rot * dir;
-    }
-
-    return wave / sum;
-}
-
-float waveHeight(vec2 p, float t) {
-#ifndef WATER_WAVES
-    return 0.0;
-#elif defined WATER_NOISY_WAVES
-    return waterNoisySwellField(p, t) * WATER_WAVE_HEIGHT * WATER_WAVE_INTENSITY;
-#else
-    return waterSwellField(p, t) * WATER_WAVE_HEIGHT * WATER_WAVE_INTENSITY;
-#endif
-}
-
-
-
-vec3 waterNormal(vec2 p, float t, float viewDot, float sky, float rain) {
+vec3 waterNormal(sampler2D noiseTex, vec2 p, float t, float viewDot, float sky, float rain, float viewDistance) {
 #ifndef WATER_WAVES
     return vec3(0.0, 1.0, 0.0);
-#elif defined WATER_NOISY_WAVES
-    const float e = 0.12;
-    float h0 = waterNoisyRippleField(p, t);
-    float hx = waterNoisyRippleField(p + vec2(e, 0.0), t);
-    float hz = waterNoisyRippleField(p + vec2(0.0, e), t);
-
-    float strength = mix(0.06, 0.26 + 0.75 * rain, sky * sky) * WATER_WAVE_INTENSITY;
-    strength *= smoothstep(0.02, 0.18, viewDot);
-    vec2 slope = clamp(vec2(h0 - hx, h0 - hz) / e * strength, vec2(-1.25), vec2(1.25));
-    return normalize(vec3(slope.x, 1.0, slope.y));
 #else
-    vec3 wave = waterRippleSample(p, t);
-    float strength = mix(0.035, 0.18 + 0.46 * rain, sky * sky) * WATER_WAVE_INTENSITY;
-    strength *= smoothstep(0.02, 0.18, viewDot);
-    vec2 slope = clamp(-wave.yz * strength, vec2(-1.0), vec2(1.0));
-    return normalize(vec3(slope.x, 1.0, slope.y));
+    float wt = t * WAVE_SPEED;
+    float detailFade = 1.0 - smoothstep(64.0, 192.0, viewDistance);
+    const float offset = 0.18;
+    float left = waterWaveField(noiseTex, p - vec2(offset, 0.0), wt, detailFade);
+    float right = waterWaveField(noiseTex, p + vec2(offset, 0.0), wt, detailFade);
+    float down = waterWaveField(noiseTex, p - vec2(0.0, offset), wt, detailFade);
+    float up = waterWaveField(noiseTex, p + vec2(0.0, offset), wt, detailFade);
+
+    vec2 slope = vec2(left - right, down - up) / (2.0 * offset);
+    float exposure = mix(0.78, 1.0, sky);
+    float weather = 1.0 + rain * 0.18;
+    float grazingStability = smoothstep(0.025, 0.15, viewDot);
+    slope *= 0.29 * WATER_WAVE_INTENSITY * exposure * weather * grazingStability;
+    slope = clamp(slope, vec2(-0.55), vec2(0.55));
+    return normalize(vec3(-slope.x, 1.0, -slope.y));
 #endif
+}
+
+float waterFresnel(float NoV) {
+    float grazing = 1.0 - saturate(NoV);
+    float grazing2 = grazing * grazing;
+    return 0.02 + 0.98 * grazing2 * grazing2 * grazing;
+}
+
+float waterSurfaceAlpha(vec3 transmittance, float fresnel) {
+    float depthOpacity = 1.0 - dot(transmittance, vec3(0.20, 0.65, 0.15));
+    float bodyAlpha = mix(WATER_OPACITY, 0.82, saturate(depthOpacity));
+    return mix(bodyAlpha, 1.0, fresnel);
 }
 
 

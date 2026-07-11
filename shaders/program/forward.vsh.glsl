@@ -44,14 +44,16 @@ void main() {
     vec4 viewPos = gl_ModelViewMatrix * gl_Vertex;
     scenePos = (gbufferModelViewInverse * viewPos).xyz;
 
-#ifdef WATER
-  #ifdef WATER_WAVES
-    if (blockId == 10061 && normalW.y > 0.5) {
-        vec3 worldPos = scenePos + cameraPosition;
-        scenePos.y += waveHeight(worldPos.xz, frameTimeCounter);
+#ifdef WEATHER
+    {
+        vec2 windDir = CLOUD_WIND;
+        float wlen = length(windDir);
+        windDir = wlen > 1e-4 ? windDir / wlen : vec2(1.0, 0.0);
+        float gust = 0.85 + 0.15 * sin(frameTimeCounter * 0.7 + scenePos.x * 0.15 + scenePos.z * 0.15);
+        float slant = RAIN_SLANT * 0.35 * gust;
+        scenePos.xz += windDir * (slant * clamp(scenePos.y, -12.0, 12.0));
         viewPos = gbufferModelView * vec4(scenePos, 1.0);
     }
-  #endif
 #endif
 
     gl_Position = taaJitterPos(gl_ProjectionMatrix * viewPos, vec2(viewWidth, viewHeight), frameCounter);

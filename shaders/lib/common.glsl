@@ -95,24 +95,7 @@ vec3 fresnelSchlick(float cosT, vec3 f0) {
 }
 
 vec3 waterDiscLightSpecular(vec3 N, vec3 V, vec3 L, float sinRadius, float roughness, vec3 f0) {
-    vec3 base = discLightSpecular(N, V, L, sinRadius, roughness, f0);
-    vec3 R = reflect(-V, N);
-    vec3 H = normalize(V + L);
-
-    float NoL = saturate(dot(N, L));
-    float NoV = saturate(dot(N, V));
-    float LoH = saturate(dot(L, H));
-    float RoL = saturate(dot(R, L));
-    float miss = max(1.0 - RoL, 0.0);
-
-    float radius = max(sinRadius, 1e-3);
-    float radius2 = radius * radius;
-    float core = exp2(-miss / max(radius2 * 0.42, 6e-4));
-    float halo = exp2(-miss / max(radius2 * 2.80, 3e-3));
-    float visibility = smoothstep(0.01, 0.18, NoL) * smoothstep(0.01, 0.10, NoV);
-
-    vec3 F = fresnelSchlick(LoH, f0);
-    return base * 0.75 + (core * 2.40 + halo * 0.55) * F * NoL * visibility;
+    return min(discLightSpecular(N, V, L, sinRadius, roughness, f0), vec3(4.0));
 }
 
 #endif

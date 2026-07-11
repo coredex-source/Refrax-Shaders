@@ -44,6 +44,7 @@
         "refraxVxProjInv3"
     ],
     "samplers": [
+        "noisetex",
         "vxDepthTexOpaque"
     ]
 }

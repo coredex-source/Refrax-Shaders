@@ -14,6 +14,7 @@
 
 uniform sampler2D gtexture;
 uniform sampler2D lightmap;
+uniform sampler2D noisetex;
 #if defined PBR_MATERIALS && !defined PARTICLE
 uniform sampler2D normals;
 uniform sampler2D specular;
@@ -39,6 +40,9 @@ uniform int frameCounter, isEyeInWater;
 uniform float alphaTestRef;
 uniform int heldBlockLightValue, heldBlockLightValue2;
 uniform int heldItemId, heldItemId2;
+#ifdef IS_IRIS
+uniform vec3 relativeEyePosition;
+#endif
 #ifdef ENTITY
 uniform vec4 entityColor;
 #endif
@@ -81,21 +85,31 @@ vec3 blockLightAt(vec3 pos, vec3 N, float lmBlock) {
     vec3 light = fallback;
 #endif
 #ifdef HAND_LIGHT
-    {
-        float d = length(pos);
-        float v1 = heldLightValue(heldItemId, heldBlockLightValue);
-        float v2 = heldLightValue(heldItemId2, heldBlockLightValue2);
-        if (v1 > 0.0) light += heldLightColor(heldItemId)
-            * (pow(saturate(1.0 - d / v1), 2.0) * v1 * (0.12 * HAND_LIGHT_STRENGTH));
-        if (v2 > 0.0) light += heldLightColor(heldItemId2)
-            * (pow(saturate(1.0 - d / v2), 2.0) * v2 * (0.12 * HAND_LIGHT_STRENGTH));
-    }
+  #ifdef IS_IRIS
+    light += heldLightAt(pos + relativeEyePosition, heldItemId, heldBlockLightValue, heldItemId2, heldBlockLightValue2);
+  #else
+    light += heldLightAt(pos, heldItemId, heldBlockLightValue, heldItemId2, heldBlockLightValue2);
+  #endif
 #endif
     return light;
 }
 
 void main() {
     vec4 albedo = texture(gtexture, uv) * vcolor;
+
+#ifdef PARTICLE_MARKER
+    float splashBlue = albedo.b - max(albedo.r, albedo.g);
+    if (albedo.b > 0.68 && splashBlue > 0.22 && albedo.r < 0.40)
+        discard;
+#endif
+#if defined PARTICLE && !defined WEATHER
+    bool splashPalette = albedo.r < 0.42 && albedo.g < 0.62 && albedo.b > 0.55
+                      && albedo.b > albedo.r * 1.70
+                      && albedo.b > albedo.g * 1.15;
+    if (rainStrength > 0.01 && splashPalette)
+        discard;
+#endif
+
     bool realWaterFwd = false;
 #ifdef WATER
     realWaterFwd = blockId == 10061;
@@ -180,7 +194,7 @@ void main() {
     vec3 worldPos = scenePos + cameraPosition;
     if (realWater && N.y > 0.5) {
         float vDot = abs(dot(N, normalize(-scenePos)));
-        N = waterNormal(worldPos.xz, frameTimeCounter, vDot, lmcoord.y, rainStrength);
+        N = waterNormal(noisetex, worldPos.xz, frameTimeCounter, vDot, lmcoord.y, rainStrength, length(scenePos));
     }
   #endif
 
@@ -226,15 +240,16 @@ void main() {
     }
 
     vec3 viewDirW = normalize(-scenePos);
-    float fres = saturate(fresnelSchlick(saturate(dot(viewDirW, N)), vec3(0.02)).x * 1.35 + 0.015);
+    float fres = realWater ? waterFresnel(dot(viewDirW, N)) : fresnelSchlick(saturate(dot(viewDirW, N)), vec3(0.02)).x;
 
     vec3 reflDirW = reflect(-viewDirW, N);
   #if defined WORLD_NETHER || defined WORLD_END
     vec3 refl = dimensionSky(reflDirW, sunDir, fogColor, frameTimeCounter, rainStrength);
   #else
-    vec3 refl = skyGradient(reflDirW, sunDir, rainStrength) * pow(lmcoord.y, 2.0);
+    float skyReflectionVisibility = mix(0.08, 1.0, lmcoord.y * lmcoord.y);
+    vec3 refl = skyGradient(reflDirW, sunDir, rainStrength) * skyReflectionVisibility;
   #endif
-    if (realWater && WATER_REFLECTION_MODE > 0 && fres > 0.045) {
+    if (realWater && WATER_REFLECTION_MODE > 0 && fres > 0.025) {
         vec3 viewPos = (gbufferModelView * vec4(scenePos, 1.0)).xyz;
         vec3 reflDirV = mat3(gbufferModelView) * reflDirW;
         vec3 hit;
@@ -251,7 +266,7 @@ void main() {
             }
         }
     }
-    float glintRough = WATER_ROUGHNESS + saturate(length(scenePos) / 80.0) * 0.06;
+    float glintRough = WATER_ROUGHNESS + saturate(length(scenePos) / 96.0) * 0.018;
     vec3 glintF0 = vec3(0.02);
   #if defined PBR_MATERIALS && !defined PARTICLE
     if (!realWater) {
@@ -281,11 +296,11 @@ void main() {
         float waterDepth = max(backDist - length(scenePos), 0.0);
         vec3 trans = waterTransmittanceTinted(vcolor.rgb, waterDepth);
 
-        vec3 scatter = mix(WATER_COLOR, srgbToLinear(vcolor.rgb), 0.45) * 0.48;
-        vec3 body = scatter * (lightCol * NoL * shadow * 0.22 + skyLight * 0.85 + blockLight * 0.55);
-        body = mix(body, body * 0.45, saturate(1.0 - trans.g));
+        vec3 scatter = mix(WATER_COLOR * WATER_COLOR, srgbToLinear(vcolor.rgb) * 0.20, 0.25) * 0.80;
+        vec3 body = scatter * (lightCol * NoL * shadow * 0.22 + skyLight * 0.92 + blockLight * 0.52);
+        body = mix(body, body * 0.42, saturate(1.0 - trans.g));
         lit = mix(body, refl, fres) + sunSpec * 1.5;
-        alpha = saturate(0.16 + (1.0 - trans.g) * 0.46 + fres * 0.55);
+        alpha = waterSurfaceAlpha(trans, fres);
         outWaterData = vec4(N, 2.0);
     } else {
       #if defined PBR_MATERIALS && !defined PARTICLE
@@ -349,6 +364,15 @@ void main() {
 #endif
 #ifdef STOCHASTIC_PARTICLE
     outColor.a = particleSoft > 0.5 ? 0.75 : 0.25;
+#endif
+#ifdef WEATHER
+    {
+        bool isRain = abs(albedo.r - albedo.b) > 0.015;
+        vec3 tint = isRain ? vec3(0.45, 0.60, 1.00) : vec3(0.88, 0.92, 1.00);
+        float bright = luminance(outColor.rgb);
+        outColor.rgb = mix(outColor.rgb, tint * (bright / max(luminance(tint), 1e-3)), isRain ? 0.7 : 0.3);
+        outColor.a *= RAIN_OPACITY * (0.55 + 0.45 * rainStrength);
+    }
 #endif
 #endif
 }

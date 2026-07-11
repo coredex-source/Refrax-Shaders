@@ -45,7 +45,7 @@ void voxy_emitFragment(VoxyFragmentParameters p) {
     if (water && N.y > 0.5) {
         vec3 worldPos = scenePos + refraxCameraPosition;
         float vDot = abs(dot(N, viewDirW));
-        N = waterNormal(worldPos.xz, refraxFrameTimeCounter, vDot, lm.y, rainStrength);
+        N = waterNormal(noisetex, worldPos.xz, refraxFrameTimeCounter, vDot, lm.y, rainStrength, dist);
     }
 
     float NoL = saturate(dot(N, lightDir));
@@ -70,17 +70,17 @@ void voxy_emitFragment(VoxyFragmentParameters p) {
 #endif
     vec3 minAmb = vec3(0.010, 0.011, 0.014) * MIN_AMBIENT;
 
-    float fres = saturate(fresnelSchlick(saturate(dot(viewDirW, N)), vec3(0.02)).x * 1.35 + 0.015);
+    float fres = water ? waterFresnel(dot(viewDirW, N)) : fresnelSchlick(saturate(dot(viewDirW, N)), vec3(0.02)).x;
     vec3 reflDirW = reflect(-viewDirW, N);
 #if defined WORLD_NETHER
     vec3 refl = dimensionSky(reflDirW, sunDir, VOXY_NETHER_FOG, refraxFrameTimeCounter, rainStrength);
 #elif defined WORLD_END
     vec3 refl = dimensionSky(reflDirW, sunDir, vec3(0.0), refraxFrameTimeCounter, rainStrength);
 #else
-    vec3 refl = skyGradient(reflDirW, sunDir, rainStrength) * pow(lm.y, 2.0);
+    vec3 refl = skyGradient(reflDirW, sunDir, rainStrength) * mix(0.08, 1.0, lm.y * lm.y);
 #endif
 
-    float glintRough = water ? WATER_ROUGHNESS + saturate(dist / 80.0) * 0.06 : 0.03;
+    float glintRough = water ? WATER_ROUGHNESS + saturate(dist / 96.0) * 0.018 : 0.03;
     vec3 sunSpecShape = water
         ? waterDiscLightSpecular(N, viewDirW, lightDir, SUN_GLINT_RADIUS, glintRough, vec3(0.02))
         : discLightSpecular(N, viewDirW, lightDir, SUN_GLINT_RADIUS, glintRough, vec3(0.02));
@@ -94,11 +94,11 @@ void voxy_emitFragment(VoxyFragmentParameters p) {
         float waterDepth = max(length(backView) - dist, 0.0);
         vec3 trans = waterTransmittanceTinted(tint, waterDepth);
 
-        vec3 scatter = mix(WATER_COLOR, srgbToLinear(tint), 0.45) * 0.48;
-        vec3 body = scatter * (lightCol * NoL * shadow * 0.22 + skyLight * 0.85 + blockLight * 0.55);
-        body = mix(body, body * 0.45, saturate(1.0 - trans.g));
+        vec3 scatter = mix(WATER_COLOR * WATER_COLOR, srgbToLinear(tint) * 0.20, 0.25) * 0.80;
+        vec3 body = scatter * (lightCol * NoL * shadow * 0.22 + skyLight * 0.92 + blockLight * 0.52);
+        body = mix(body, body * 0.42, saturate(1.0 - trans.g));
         lit = mix(body, refl, fres) + sunSpec * 1.5;
-        alpha = saturate(0.16 + (1.0 - trans.g) * 0.46 + fres * 0.55);
+        alpha = waterSurfaceAlpha(trans, fres);
         outWaterData = vec4(N, 2.0);
     } else {
         vec3 albedo = srgbToLinear(base.rgb);

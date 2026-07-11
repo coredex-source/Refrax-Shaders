@@ -9,6 +9,7 @@
 #include "/lib/voxel.glsl"
 #include "/lib/labpbr.glsl"
 #include "/lib/ssr.glsl"
+#include "/lib/wetness.glsl"
 
 uniform sampler2D depthtex0;
 uniform sampler2D colortex0;
@@ -34,10 +35,15 @@ uniform vec3 sunPosition;
 uniform vec3 shadowLightPosition;
 uniform vec3 fogColor;
 uniform float frameTimeCounter, rainStrength, viewWidth, viewHeight;
+uniform float wetness;
 uniform float nightVision;
 uniform int frameCounter, isEyeInWater;
 uniform int heldBlockLightValue, heldBlockLightValue2;
 uniform int heldItemId, heldItemId2;
+#ifdef IS_IRIS
+uniform vec3 relativeEyePosition;
+#endif
+uniform float refraxWetBiome;
 
 in vec2 uv;
 
@@ -72,15 +78,11 @@ vec3 blockLightAt(vec3 pos, vec3 N, float lmBlock) {
     vec3 light = fallback;
 #endif
 #ifdef HAND_LIGHT
-    {
-        float d = length(pos);
-        float v1 = heldLightValue(heldItemId, heldBlockLightValue);
-        float v2 = heldLightValue(heldItemId2, heldBlockLightValue2);
-        if (v1 > 0.0) light += heldLightColor(heldItemId)
-            * (pow(saturate(1.0 - d / v1), 2.0) * v1 * (0.12 * HAND_LIGHT_STRENGTH));
-        if (v2 > 0.0) light += heldLightColor(heldItemId2)
-            * (pow(saturate(1.0 - d / v2), 2.0) * v2 * (0.12 * HAND_LIGHT_STRENGTH));
-    }
+  #ifdef IS_IRIS
+    light += heldLightAt(pos + relativeEyePosition, heldItemId, heldBlockLightValue, heldItemId2, heldBlockLightValue2);
+  #else
+    light += heldLightAt(pos, heldItemId, heldBlockLightValue, heldItemId2, heldBlockLightValue2);
+  #endif
 #endif
     return light;
 }
@@ -131,6 +133,30 @@ void main() {
     float f0raw = c3.w;
     float ao = texture(colortex6, fsrRegionUV(uv, viewTexel)).r;
     float dither = ignAnim(gl_FragCoord.xy, frameCounter);
+
+#if defined RAIN_PUDDLES && !defined WORLD_NETHER && !defined WORLD_END
+    vec3 puddleN = N;
+    float puddleCover = 0.0;
+    {
+        vec3 geomNV = cross(dFdx(viewPos), dFdy(viewPos));
+        geomNV = normalize(dot(geomNV, viewPos) > 0.0 ? -geomNV : geomNV);
+        vec3 geomNW = normalize(mat3(gbufferModelViewInverse) * geomNV);
+        if (wetness * refraxWetBiome > 0.001 && !isMetal(f0raw) && !isMatteFoliageMaterial(roughness, f0raw)) {
+            vec3 worldPos = scenePos + cameraPosition;
+            WetResult wr = computeWetness(worldPos, geomNW.y, lm.y, wetness, refraxWetBiome);
+            float notEmit = 1.0 - saturate(emission);
+            albedo *= mix(1.0, WETNESS_DARKEN, max(wr.wet * 0.85, wr.puddle) * notEmit);
+            roughness = mix(roughness, roughness * 0.55, wr.wet * 0.6 * notEmit);
+            puddleCover = wr.puddle * notEmit;
+            if (puddleCover > 0.001) {
+                vec3 flatPuddleN = normalize(mix(geomNW, vec3(0.0, 1.0, 0.0), 0.9));
+                vec3 rippleN = puddleNormal(worldPos.xz, geomNW, frameTimeCounter, rainStrength);
+                float rippleBlend = puddleCover * smoothstep(0.10, 0.85, rainStrength) * 0.42;
+                puddleN = normalize(mix(flatPuddleN, rippleN, rippleBlend));
+            }
+        }
+    }
+#endif
 
 #ifdef DEBUG_LPV
   #ifdef COLORED_LIGHTING
@@ -213,11 +239,47 @@ void main() {
         }
         float NoV = saturate(dot(V, N));
         vec3 F = f0 + (max(vec3(1.0 - roughness), f0) - f0) * pow(1.0 - NoV, 5.0);
-        float reflWeight = metal ? 1.0 - 0.75 * saturate(roughness)
-                                 : pow(smoothness, 5.0) * 0.04;
+        float reflWeight = metal ? 1.0 - 0.75 * saturate(roughness) : pow(smoothness, 5.0) * 0.04;
         color += refl * F * reflWeight;
     }
   #endif
+#endif
+
+#if defined RAIN_PUDDLES && !defined WORLD_NETHER && !defined WORLD_END
+    if (puddleCover > 0.001) {
+        vec3 Vw = -dirW;
+        float NoV = saturate(dot(puddleN, Vw));
+        float fres = 0.02 + 0.98 * pow(1.0 - NoV, 5.0);
+        vec3 reflDir = reflect(dirW, puddleN);
+        float skyVis = pow(lm.y, 2.0);
+
+  #if RAIN_PUDDLE_REFLECTIONS == 0
+        vec3 env = skyAmbient(sunDir, rainStrength) * (0.7 + 0.6 * skyVis);
+  #else
+        vec3 env = dimensionSky(reflDir, sunDir, fogColor, frameTimeCounter, rainStrength) * skyVis;
+    #if RAIN_PUDDLE_REFLECTIONS == 2
+        {
+            vec3 reflDirV = mat3(gbufferModelView) * reflDir;
+            vec3 hit;
+            float hitS = raymarchSSR(depthtex0, viewPos, reflDirV, gbufferProjection, gbufferProjectionInverse, dither, hit);
+            if (hitS > 0.0) {
+                vec3 hitView = screenToView(hit, gbufferProjectionInverse);
+                vec3 hitScene = (gbufferModelViewInverse * vec4(hitView, 1.0)).xyz;
+                vec3 prevUV = reprojectScene(hitScene, gbufferPreviousModelView, gbufferPreviousProjection, cameraPosition, previousCameraPosition);
+                if (clamp(prevUV.xy, 0.0, 1.0) == prevUV.xy) {
+                    vec4 hist = texture(colortex5, historyUV(prevUV.xy, viewTexel));
+                    env = mix(env, hist.rgb, hitS * saturate(hist.a));
+                }
+            }
+        }
+    #endif
+  #endif
+        vec3 glint = discLightSpecular(puddleN, Vw, lightDir, SUN_GLINT_RADIUS, 0.015, vec3(0.02))
+                   * lightCol * directShadow * (SUN_GLINT_STRENGTH * 0.6);
+
+        float reflMix = puddleCover * fres;
+        color = mix(color, env, reflMix) + glint * puddleCover;
+    }
 #endif
 
 #ifdef LOD_ACTIVE
