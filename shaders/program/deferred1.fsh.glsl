@@ -5,6 +5,7 @@
 #include "/lib/blockid.glsl"
 #include "/lib/atmosphere.glsl"
 #include "/lib/shadows.glsl"
+#include "/lib/dh.glsl"
 #include "/lib/voxel.glsl"
 #include "/lib/labpbr.glsl"
 #include "/lib/ssr.glsl"
@@ -17,6 +18,9 @@ uniform sampler2D colortex3;
 uniform sampler2D colortex4;
 uniform sampler2D colortex5;
 uniform sampler2D colortex6;
+#ifdef VOXY
+uniform sampler2D colortex8;
+#endif
 uniform sampler2D shadowtex0, shadowtex1, shadowcolor0;
 #ifdef COLORED_LIGHTING
 uniform sampler3D lpvSampler1;
@@ -88,15 +92,29 @@ void main() {
 
     float depth = texture(depthtex0, uv).r;
     vec3 viewPos = screenToView(vec3(uv, depth), gbufferProjectionInverse);
+    bool lodPixel = false;
+#ifdef LOD_ACTIVE
+    if (depth >= 1.0) {
+        float lodDepth = texture(lodDepthTex1, uv).r;
+        if (lodDepth < 1.0) {
+            lodPixel = true;
+            viewPos = screenToView(vec3(uv, lodDepth), lodProjectionInverse);
+        }
+    }
+#endif
     vec3 scenePos = (gbufferModelViewInverse * vec4(viewPos, 1.0)).xyz;
     vec3 dirW = normalize(scenePos);
     vec3 sunDir = normalize(mat3(gbufferModelViewInverse) * sunPosition);
     vec3 lightDir = normalize(mat3(gbufferModelViewInverse) * shadowLightPosition);
 
-    if (depth >= 1.0) {
+    if (depth >= 1.0 && !lodPixel) {
         vec3 sky = dimensionSky(dirW, sunDir, fogColor, frameTimeCounter, rainStrength);
         vec4 clouds = texture(colortex4, fsrRegionUV(uv, viewTexel));
         sky = sky * clouds.a + clouds.rgb;
+#ifdef VOXY
+        vec4 lodLayer = texture(colortex8, uv);
+        sky = sky * (1.0 - lodLayer.a) + lodLayer.rgb;
+#endif
         outColor = lineOverlay(vec4(sky, 1.0));
         return;
     }
@@ -200,6 +218,30 @@ void main() {
         color += refl * F * reflWeight;
     }
   #endif
+#endif
+
+#ifdef LOD_ACTIVE
+    if (lodPixel) {
+        vec4 clouds = texture(colortex4, fsrRegionUV(uv, viewTexel));
+        color = color * clouds.a + clouds.rgb;
+    }
+#endif
+
+#ifdef VOXY
+    {
+        vec4 lodLayer = texture(colortex8, uv);
+        if (lodLayer.a > 0.001) {
+            float lodTransDepth = texture(lodDepthTex0, uv).r;
+            if (lodTransDepth < 1.0) {
+                float lodDist = length(screenToView(vec3(uv, lodTransDepth), lodProjectionInverse));
+                float vanillaDist = depth < 1.0
+                    ? length(screenToView(vec3(uv, depth), gbufferProjectionInverse))
+                    : 1e9;
+                if (lodDist < vanillaDist)
+                    color = color * (1.0 - lodLayer.a) + lodLayer.rgb;
+            }
+        }
+    }
 #endif
 
     outColor = lineOverlay(vec4(color, 1.0));

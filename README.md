@@ -23,6 +23,11 @@ These values can be bumped higher by changing the performance mode slider at ver
 ## Supported versions:
 1.18.2 and higher versions should all work just fine.
 
+## Mod support
+
+**Distant Horizons** and **Voxy** are both supported.
+**Voxy** is recommended to be used as the LOD mod.
+
 ## Unsupported versions:
 1.16.5 - No colored lighting and no block breaking particles.
 1.17.x, 1.18 - Does not load the shader

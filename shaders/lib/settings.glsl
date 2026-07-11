@@ -18,6 +18,7 @@
 //#define WATER_NOISY_WAVES
 #define HAND_LIGHT
 #define LPV_FOG
+#define DH_NOISE
 
 #if AA_MODE == 1
 #define FXAA

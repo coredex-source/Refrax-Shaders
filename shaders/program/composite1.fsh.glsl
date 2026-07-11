@@ -2,6 +2,7 @@
 
 #include "/lib/settings.glsl"
 #include "/lib/common.glsl"
+#include "/lib/dh.glsl"
 #if defined TAAU || defined FSR
 #include "/lib/taau.glsl"
 #endif
@@ -95,10 +96,26 @@ void main() {
         prevUV = vec3(uv, closest.z);
     } else {
         vec3 viewPos = screenToView(vec3(closestUV, closest.z), gbufferProjectionInverse);
-        vec3 scenePos = (gbufferModelViewInverse * vec4(viewPos, 1.0)).xyz;
-        vec3 reproj = closest.z >= 1.0
-            ? reprojectScene(scenePos, gbufferPreviousModelView, gbufferPreviousProjection, previousCameraPosition, previousCameraPosition)
-            : reprojectScene(scenePos, gbufferPreviousModelView, gbufferPreviousProjection, cameraPosition, previousCameraPosition);
+        vec3 reproj;
+        bool lodPixel = false;
+#ifdef LOD_ACTIVE
+        if (closest.z >= 1.0) {
+            float lodDepth = texelFetch(lodDepthTex0, ivec2(closest.xy), 0).r;
+            if (lodDepth < 1.0) {
+                lodPixel = true;
+                viewPos = screenToView(vec3(closestUV, lodDepth), lodProjectionInverse);
+                vec3 lodScene = (gbufferModelViewInverse * vec4(viewPos, 1.0)).xyz;
+                reproj = reprojectScene(lodScene, gbufferPreviousModelView, lodPreviousProjection, cameraPosition, previousCameraPosition);
+            }
+        }
+        if (!lodPixel)
+#endif
+        {
+            vec3 scenePos = (gbufferModelViewInverse * vec4(viewPos, 1.0)).xyz;
+            reproj = closest.z >= 1.0
+                ? reprojectScene(scenePos, gbufferPreviousModelView, gbufferPreviousProjection, previousCameraPosition, previousCameraPosition)
+                : reprojectScene(scenePos, gbufferPreviousModelView, gbufferPreviousProjection, cameraPosition, previousCameraPosition);
+        }
         prevUV = vec3(uv - (closestUV - reproj.xy), reproj.z);
         distFactor = 1.0 - exp2(-0.025 * length(viewPos));
     }
@@ -203,9 +220,19 @@ void main() {
     if (depth < 0.56) {
         prevUV = vec3(uv, depth);
     } else if (depth >= 1.0) {
-        vec3 viewPos = screenToView(vec3(uv, depth), gbufferProjectionInverse);
-        vec3 scenePos = (gbufferModelViewInverse * vec4(viewPos, 1.0)).xyz;
-        prevUV = reprojectScene(scenePos, gbufferPreviousModelView, gbufferPreviousProjection, previousCameraPosition, previousCameraPosition);
+#ifdef LOD_ACTIVE
+        float lodDepth = texture(lodDepthTex0, uv).r;
+        if (lodDepth < 1.0) {
+            vec3 viewPos = screenToView(vec3(uv, lodDepth), lodProjectionInverse);
+            vec3 scenePos = (gbufferModelViewInverse * vec4(viewPos, 1.0)).xyz;
+            prevUV = reprojectScene(scenePos, gbufferPreviousModelView, lodPreviousProjection, cameraPosition, previousCameraPosition);
+        } else
+#endif
+        {
+            vec3 viewPos = screenToView(vec3(uv, depth), gbufferProjectionInverse);
+            vec3 scenePos = (gbufferModelViewInverse * vec4(viewPos, 1.0)).xyz;
+            prevUV = reprojectScene(scenePos, gbufferPreviousModelView, gbufferPreviousProjection, previousCameraPosition, previousCameraPosition);
+        }
     } else {
         vec3 viewPos = screenToView(vec3(uv, depth), gbufferProjectionInverse);
         vec3 scenePos = (gbufferModelViewInverse * vec4(viewPos, 1.0)).xyz;

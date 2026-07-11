@@ -10,6 +10,7 @@
 #include "/lib/water.glsl"
 #include "/lib/ssr.glsl"
 #include "/lib/labpbr.glsl"
+#include "/lib/dh.glsl"
 
 uniform sampler2D gtexture;
 uniform sampler2D lightmap;
@@ -269,7 +270,15 @@ void main() {
         vec2 suv = gl_FragCoord.xy / vec2(viewWidth, viewHeight);
         float dBack = texture(depthtex1, suv).r;
         vec3 backView = screenToView(vec3(suv, dBack), gbufferProjectionInverse);
-        float waterDepth = max(length(backView) - length(scenePos), 0.0);
+        float backDist = length(backView);
+#ifdef LOD_ACTIVE
+        if (dBack >= 1.0) {
+            float lodBack = texture(lodDepthTex1, suv).r;
+            if (lodBack < 1.0)
+                backDist = length(screenToView(vec3(suv, lodBack), lodProjectionInverse));
+        }
+#endif
+        float waterDepth = max(backDist - length(scenePos), 0.0);
         vec3 trans = waterTransmittanceTinted(vcolor.rgb, waterDepth);
 
         vec3 scatter = mix(WATER_COLOR, srgbToLinear(vcolor.rgb), 0.45) * 0.48;

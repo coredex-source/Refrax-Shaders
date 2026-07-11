@@ -21,15 +21,15 @@ float hgPhase(float cosT, float g) {
     return (1.0 - g2) / (4.0 * PI * pow(1.0 + g2 - 2.0 * g * cosT, 1.5));
 }
 
-vec4 volumetricClouds(vec3 camWorld, vec3 dir, vec3 sunDir, float time, float rain, float dither) {
+vec4 volumetricClouds(vec3 camWorld, vec3 dir, vec3 sunDir, float time, float rain, float dither, float maxDist) {
     float bottom = CLOUD_ALTITUDE, top = CLOUD_ALTITUDE + CLOUD_THICKNESS;
     if (abs(dir.y) < 0.015) return vec4(0.0, 0.0, 0.0, 1.0);
     float t0 = (bottom - camWorld.y) / dir.y;
     float t1 = (top - camWorld.y) / dir.y;
     if (t0 > t1) { float tmp = t0; t0 = t1; t1 = tmp; }
     t0 = max(t0, 0.0);
-    if (t1 <= 0.0 || t0 > 9000.0) return vec4(0.0, 0.0, 0.0, 1.0);
-    t1 = min(t1, t0 + 3500.0);
+    if (t1 <= 0.0 || t0 > 9000.0 || t0 >= maxDist) return vec4(0.0, 0.0, 0.0, 1.0);
+    t1 = min(t1, min(t0 + 3500.0, maxDist));
 
     int steps = PERF_SCALED_COUNT(CLOUD_STEPS, 4);
     float dt = (t1 - t0) / float(steps);
@@ -65,10 +65,10 @@ vec4 volumetricClouds(vec3 camWorld, vec3 dir, vec3 sunDir, float time, float ra
     return vec4(scatter * fade, mix(1.0, trans, fade));
 }
 
-vec4 clouds2D(vec3 camWorld, vec3 dir, vec3 sunDir, float time, float rain) {
+vec4 clouds2D(vec3 camWorld, vec3 dir, vec3 sunDir, float time, float rain, float maxDist) {
     if (dir.y < 0.02) return vec4(0.0, 0.0, 0.0, 1.0);
     float t = (CLOUD_ALTITUDE + CLOUD_THICKNESS * 0.5 - camWorld.y) / dir.y;
-    if (t < 0.0) return vec4(0.0, 0.0, 0.0, 1.0);
+    if (t < 0.0 || t >= maxDist) return vec4(0.0, 0.0, 0.0, 1.0);
     vec3 p = camWorld + dir * t;
     float d = fbm3(vec3(p.xz * CLOUD_SCALE * 1.4, time * 0.02), 4);
     float a = saturate((d - (1.0 - (CLOUD_COVERAGE + rain * 0.28))) * 3.0) * saturate(dir.y * 6.0);
