@@ -5,8 +5,11 @@
 #include "/lib/atmosphere.glsl"
 #include "/lib/water.glsl"
 #include "/lib/shadows.glsl"
-#if defined COLORED_LIGHTING && defined LPV_FOG
-#include "/lib/voxel.glsl"
+#include "/lib/dh.glsl"
+#ifdef LPV_FOG
+  #ifdef COLORED_LIGHTING
+    #include "/lib/voxel.glsl"
+  #endif
 #endif
 
 /* ---- Buffer formats ----
@@ -17,14 +20,23 @@ const int colortex3Format = RGBA8;
 const int colortex4Format = RGBA16F;
 const int colortex5Format = RGBA16F;
 const int colortex6Format = R8;
+const int colortex8Format = RGBA16F;
+const int colortex9Format = RGBA16F;
 */
 const bool colortex5Clear = false;
+const bool colortex9Clear = true;
+const vec4 colortex9ClearColor = vec4(0.0, 0.0, 0.0, 0.0);
 
 uniform sampler2D colortex0;
 uniform sampler2D colortex2;
+#ifdef VOXY
+uniform sampler2D colortex9;
+#endif
 uniform sampler2D depthtex0, depthtex1;
-#if defined COLORED_LIGHTING && defined LPV_FOG
-uniform sampler3D lpvSampler1;
+#ifdef LPV_FOG
+  #ifdef COLORED_LIGHTING
+    uniform sampler3D lpvSampler1;
+  #endif
 #endif
 uniform sampler2D shadowtex0, shadowtex1, shadowcolor0;
 uniform mat4 gbufferModelViewInverse, gbufferProjectionInverse;
@@ -56,19 +68,47 @@ void main() {
     vec2 suv = uv;
     float depth0 = texture(depthtex0, suv).r;
     float depth1 = texture(depthtex1, suv).r;
+#ifdef LOD_ACTIVE
+    float lodDepth0 = texture(lodDepthTex0, suv).r;
+#endif
 
     vec4 waterData = texture(colortex2, suv);
-    bool isWater = waterData.a > 1.5 && waterData.a < 2.5 && depth1 > depth0;
-    if (isWater) {
+    bool waterMask = waterData.a > 1.5 && waterData.a < 2.5;
+#ifdef VOXY
+    vec4 voxyWaterData = texture(colortex9, suv);
+    bool voxyWaterMask = voxyWaterData.a > 1.5 && voxyWaterData.a < 2.5;
+    if (voxyWaterMask) waterData = voxyWaterData;
+    waterMask = waterMask || voxyWaterMask;
+#endif
+    bool isWater = waterMask && depth1 > depth0;
+    bool lodWater = false;
+#ifdef LOD_ACTIVE
+    lodWater = waterMask && !isWater && depth0 >= 1.0 && texture(lodDepthTex1, suv).r > lodDepth0;
+#endif
+    if (isWater || lodWater) {
         vec3 wn = normalize(waterData.rgb);
+#ifdef LOD_ACTIVE
+        vec3 frontView = lodWater ? screenToView(vec3(uv, lodDepth0), lodProjectionInverse)
+                                  : screenToView(vec3(uv, depth0), gbufferProjectionInverse);
+        vec3 backView = lodWater ? screenToView(vec3(uv, texture(lodDepthTex1, suv).r), lodProjectionInverse)
+                                 : screenToView(vec3(uv, depth1), gbufferProjectionInverse);
+#else
         vec3 frontView = screenToView(vec3(uv, depth0), gbufferProjectionInverse);
         vec3 backView = screenToView(vec3(uv, depth1), gbufferProjectionInverse);
+#endif
         float viewDist = length(frontView);
         float layerDist = abs(length(backView) - viewDist);
         vec2 ruv = suv + wn.xz * (min(layerDist, 8.0) / max(viewDist, 1.0)) * 0.12 * REFRACTION_INTENSITY;
-        if (texture(depthtex1, ruv).r > depth0)
+        bool refrClear = texture(depthtex1, ruv).r > depth0;
+#ifdef LOD_ACTIVE
+        if (lodWater) refrClear = texture(depthtex1, ruv).r >= 1.0 && texture(lodDepthTex1, ruv).r > lodDepth0;
+#endif
+        if (refrClear)
             suv = clamp(ruv, vec2(0.001), vec2(0.999));
         depth0 = texture(depthtex0, suv).r;
+#ifdef LOD_ACTIVE
+        lodDepth0 = texture(lodDepthTex0, suv).r;
+#endif
     }
     if (isEyeInWater == 1) {
         float eyeSkyPre = float(eyeBrightnessSmooth.y) / 240.0;
@@ -78,6 +118,9 @@ void main() {
         );
         suv = clamp(suv + wave * (0.0014 + 0.0007 * eyeSkyPre) * UNDERWATER_DISTORTION, vec2(0.001), vec2(0.999));
         depth0 = texture(depthtex0, suv).r;
+#ifdef LOD_ACTIVE
+        lodDepth0 = texture(lodDepthTex0, suv).r;
+#endif
     }
 #ifdef UPSCALING
     vec4 c0 = sampleSceneScaled(suv, 1.0 / vec2(viewWidth, viewHeight));
@@ -87,13 +130,19 @@ void main() {
     vec3 color = c0.rgb;
 
     vec3 viewPos = screenToView(vec3(uv, depth0), gbufferProjectionInverse);
+    float skyMask = depth0 >= 1.0 ? 1.0 : 0.0;
+#ifdef LOD_ACTIVE
+    if (depth0 >= 1.0 && lodDepth0 < 1.0) {
+        viewPos = screenToView(vec3(uv, lodDepth0), lodProjectionInverse);
+        skyMask = 0.0;
+    }
+#endif
     vec3 scenePos = (gbufferModelViewInverse * vec4(viewPos, 1.0)).xyz;
     float dist = length(scenePos);
     vec3 dirW = scenePos / max(dist, 1e-4);
     vec3 sunDir = normalize(mat3(gbufferModelViewInverse) * sunPosition);
     vec3 lightDir = normalize(mat3(gbufferModelViewInverse) * shadowLightPosition);
     float dither = ignAnim(gl_FragCoord.xy, frameCounter);
-    float skyMask = depth0 >= 1.0 ? 1.0 : 0.0;
     float fogDist = mix(dist, far, skyMask);
 
 #ifdef GOD_RAYS
@@ -126,7 +175,8 @@ void main() {
 #endif
 #endif
 
-#if defined COLORED_LIGHTING && defined LPV_FOG
+#ifdef LPV_FOG
+  #ifdef COLORED_LIGHTING
     {
         int steps = PERF_SCALED_COUNT(12, 4);
         float maxD = min(fogDist, LPV_FOG_DISTANCE);
@@ -143,6 +193,7 @@ void main() {
 #endif
         color += (glow / float(steps)) * maxD * media;
     }
+  #endif
 #endif
 
     if (isEyeInWater == 1) {
@@ -180,7 +231,14 @@ void main() {
         float density = FOG_BASE * FOG_DENSITY * (1.0 + rainStrength * 3.0) * hFall;
         float fogAmt = 1.0 - exp(-fogDist * density);
 #endif
+#ifdef LOD_ACTIVE
+        // LOD terrain continues past the far plane: no border fade, and the
+        // fog never fully swallows distant silhouettes.
+        float border = 0.0;
+        fogAmt = min(fogAmt, 0.90);
+#else
         float border = smoothstep(far * 0.7, far * 0.95, dist);
+#endif
         color = mix(color, fogCol, saturate(max(fogAmt, border)));
     }
 

@@ -3,6 +3,7 @@
 #include "/lib/settings.glsl"
 #include "/lib/common.glsl"
 #include "/lib/clouds.glsl"
+#include "/lib/dh.glsl"
 
 uniform sampler2D depthtex0;
 uniform sampler2D colortex2;
@@ -55,13 +56,19 @@ void main() {
     vec4 clouds = vec4(0.0, 0.0, 0.0, 1.0);
 #if CLOUD_MODE > 0 && !defined WORLD_NETHER && !defined WORLD_END
     if (depth >= 1.0) {
+        float cloudMaxDist = 1e9;
+  #ifdef LOD_ACTIVE
+        float lodDepth = texture(lodDepthTex1, uv).r;
+        if (lodDepth < 1.0)
+            cloudMaxDist = length(screenToView(vec3(uv, lodDepth), lodProjectionInverse));
+  #endif
         vec3 sunDir = normalize(mat3(gbufferModelViewInverse) * sunPosition);
         vec3 viewDir = normalize(screenToView(vec3(uv, 1.0), gbufferProjectionInverse));
         vec3 dirW = normalize(mat3(gbufferModelViewInverse) * viewDir);
   #if CLOUD_MODE == 2
-        clouds = volumetricClouds(cameraPosition, dirW, sunDir, frameTimeCounter, rainStrength, dither);
+        clouds = volumetricClouds(cameraPosition, dirW, sunDir, frameTimeCounter, rainStrength, dither, cloudMaxDist);
   #else
-        clouds = clouds2D(cameraPosition, dirW, sunDir, frameTimeCounter, rainStrength);
+        clouds = clouds2D(cameraPosition, dirW, sunDir, frameTimeCounter, rainStrength, cloudMaxDist);
   #endif
     }
 #endif

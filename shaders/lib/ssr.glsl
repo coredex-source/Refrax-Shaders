@@ -6,17 +6,18 @@
 #include "/lib/common.glsl"
 
 
-float raymarchSSRCustom(sampler2D depthTex, vec3 viewPos, vec3 reflDirView, mat4 proj, mat4 projInv, float dither, int steps, int refineSteps, float baseStep, out vec3 hitScreen) {
+float raymarchSSRCustom(sampler2D depthTex, vec3 viewPos, vec3 reflDirView, mat4 proj, mat4 projInv, float dither, int steps, int refineSteps, float baseStep, float stepGrowth, out vec3 hitScreen) {
     hitScreen = vec3(0.0);
     float stepLen = baseStep;
-    vec3 p = viewPos + reflDirView * stepLen * (0.5 + dither);
+    vec3 p = viewPos + reflDirView * stepLen * (0.75 + dither * 0.50);
     for (int i = 0; i < steps; i++) {
         vec3 sp = viewToScreen(p, proj);
-        if (clamp(sp.xy, 0.0, 1.0) != sp.xy || sp.z >= 1.0) return 0.0;
+        if (clamp(sp.xy, 0.0, 1.0) != sp.xy || sp.z <= 0.0 || sp.z >= 1.0) return 0.0;
         float d = texture(depthTex, sp.xy).r;
         vec3 sceneView = screenToView(vec3(sp.xy, d), projInv);
-        float diff = sceneView.z - p.z; 
-        if (diff > 0.0 && diff < stepLen * 3.0 && d < 1.0) {
+        float diff = sceneView.z - p.z;
+        float thickness = max(stepLen * 2.2, abs(p.z) * 0.01);
+        if (diff > 0.0 && diff < thickness && d < 1.0) {
             
             vec3 lo = p - reflDirView * stepLen, hi = p;
             for (int j = 0; j < refineSteps; j++) {
@@ -28,23 +29,23 @@ float raymarchSSRCustom(sampler2D depthTex, vec3 viewPos, vec3 reflDirView, mat4
             }
             hitScreen = viewToScreen((lo + hi) * 0.5, proj);
             vec2 border = min(hitScreen.xy, 1.0 - hitScreen.xy);
-            return saturate(min(border.x, border.y) * 12.0); 
+            return saturate(min(border.x, border.y) * 16.0);
         }
         p += reflDirView * stepLen;
-        stepLen *= 1.18; 
+        stepLen *= stepGrowth;
     }
     return 0.0;
 }
 
 float raymarchSSR(sampler2D depthTex, vec3 viewPos, vec3 reflDirView, mat4 proj, mat4 projInv, float dither, out vec3 hitScreen) {
     int steps = PERF_SCALED_COUNT(SSR_STEPS, 6);
-    return raymarchSSRCustom(depthTex, viewPos, reflDirView, proj, projInv, dither, steps, 4, 0.35, hitScreen);
+    return raymarchSSRCustom(depthTex, viewPos, reflDirView, proj, projInv, dither, steps, 4, 0.40, 1.22, hitScreen);
 }
 
 float raymarchSSRFast(sampler2D depthTex, vec3 viewPos, vec3 reflDirView,
                       mat4 proj, mat4 projInv, float dither, out vec3 hitScreen) {
     int steps = PERF_SCALED_COUNT(min(SSR_STEPS, 10), 4);
-    return raymarchSSRCustom(depthTex, viewPos, reflDirView, proj, projInv, dither, max(steps, 4), 2, 0.55, hitScreen);
+    return raymarchSSRCustom(depthTex, viewPos, reflDirView, proj, projInv, dither, max(steps, 4), 2, 0.60, 1.42, hitScreen);
 }
 
 #endif
