@@ -161,7 +161,7 @@ option.RAIN_OPACITY=Rain Opacity
 option.RAIN_OPACITY.comment=Visibility of rendered rain streaks.
 
 option.PBR_MATERIALS=PBR Materials
-option.PBR_MATERIALS.comment=LabPBR resource pack support (normals, specular, emission).
+option.PBR_MATERIALS.comment=LabPBR support: tangent-space normal maps, material AO, roughness, named and albedo metals, Fresnel reflections and emission.
 option.POM=Parallax Occlusion Mapping
 option.POM_SAMPLES=POM Quality
 option.POM_DEPTH=POM Depth

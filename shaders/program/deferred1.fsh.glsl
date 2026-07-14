@@ -198,7 +198,13 @@ void main() {
 #if defined PBR_MATERIALS || REFLECTION_MODE > 0
     bool matteFoliage = isMatteFoliageMaterial(roughness, f0raw);
     bool metal = !matteFoliage && isMetal(f0raw);
-    if (metal) diffuse *= 0.2;
+    if (metal) {
+      #if REFLECTION_MODE > 0
+        diffuse = vec3(0.0);
+      #else
+        diffuse *= 0.12;
+      #endif
+    }
 #endif
 
     vec3 color = albedo * diffuse;
@@ -207,14 +213,18 @@ void main() {
 #if defined PBR_MATERIALS || REFLECTION_MODE > 0
     vec3 V = -dirW;
     float smoothness = saturate(1.0 - sqrt(saturate(roughness)));
-    vec3 f0 = matteFoliage ? vec3(0.0) : (metal ? albedo : vec3(clamp(f0raw, 0.025, 0.08)));
-    float directSpecWeight = metal ? 1.0 : smoothstep(0.35, 0.80, smoothness) * 0.6;
+    vec3 f0 = matteFoliage ? vec3(0.0) : materialF0(f0raw, albedo);
+    float directSpecWeight = metal ? 1.0 : mix(0.08, 0.60, smoothstep(0.10, 0.85, smoothness));
     if (!matteFoliage && directSpecWeight > 0.0)
         color += discLightSpecular(N, V, lightDir, SUN_GLINT_RADIUS, roughness, f0) * lightCol * directShadow * directSpecWeight * PBR_GLINT_STRENGTH;
 
   #if REFLECTION_MODE > 0
-    bool envReflect = !matteFoliage && metal;
-    bool ssrReflect = metal;
+    float NoV = saturate(dot(V, N));
+    vec3 F = matteFoliage ? vec3(0.0) : materialFresnel(NoV, f0raw, albedo);
+    float reflWeight = metal ? mix(0.45, 1.0, 1.0 - saturate(roughness))
+                             : pow(1.0 - saturate(roughness), 2.0);
+    bool envReflect = !matteFoliage && reflWeight > 0.002;
+    bool ssrReflect = envReflect && (metal || roughness < 0.35);
     if (envReflect) {
         vec3 reflDirW = reflect(dirW, N);
     #if defined WORLD_NETHER || defined WORLD_END
@@ -237,9 +247,6 @@ void main() {
                 }
             }
         }
-        float NoV = saturate(dot(V, N));
-        vec3 F = f0 + (max(vec3(1.0 - roughness), f0) - f0) * pow(1.0 - NoV, 5.0);
-        float reflWeight = metal ? 1.0 - 0.75 * saturate(roughness) : pow(smoothness, 5.0) * 0.04;
         color += refl * F * reflWeight;
     }
   #endif

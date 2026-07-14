@@ -84,7 +84,7 @@ void main() {
     float texAO = 1.0;
     float pomShadow = 1.0;
     Material mat;
-    mat.roughness = 0.9; mat.f0 = 0.04; mat.emission = 0.0; mat.sss = 0.0;
+    mat.roughness = 0.9; mat.f0 = 0.04; mat.emission = 0.0; mat.sss = 0.0; mat.porosity = 0.0;
 
 #ifdef PBR_MATERIALS
   #ifdef TERRAIN
@@ -93,9 +93,7 @@ void main() {
     const bool foliage = false;
   #endif
     if (!foliage && dot(tangentW, tangentW) > 1e-6) {
-        vec3 T = normalize(tangentW);
-        vec3 B = cross(N, T) * tangentSign;
-        mat3 TBN = mat3(T, B, N);
+        mat3 TBN = makeTBN(N, tangentW, tangentSign);
       #ifdef POM
         vec3 viewDirT = normalize(transpose(TBN) * -normalize(scenePos));
         float pomHeight;

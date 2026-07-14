@@ -167,18 +167,21 @@ void main() {
     vec3 sunDir = normalize(mat3(gbufferModelViewInverse) * sunPosition);
     vec3 lightDir = normalize(mat3(gbufferModelViewInverse) * shadowLightPosition);
     float dither = ignAnim(gl_FragCoord.xy, frameCounter);
+    float materialAO = 1.0;
 
   #if defined PBR_MATERIALS && !defined PARTICLE
     // labPBR for translucents (stained glass, ice, held water...). Real water
     // tops get their normal replaced by the procedural waves below.
     Material mat;
-    mat.roughness = 0.9; mat.f0 = 0.04; mat.emission = 0.0; mat.sss = 0.0;
+    mat.roughness = 0.9; mat.f0 = 0.04; mat.emission = 0.0; mat.sss = 0.0; mat.porosity = 0.0;
     if (!cutoutFoliage) mat = decodeSpecular(texture(specular, uv));
     if (!cutoutFoliage && dot(tangentW, tangentW) > 1e-6) {
-        vec3 T = normalize(tangentW);
-        vec3 B = cross(N, T) * tangentSign;
+        mat3 TBN = makeTBN(N, tangentW, tangentSign);
         vec4 nTex = texture(normals, uv);
-        if (nTex.r + nTex.g > 0.0005) N = normalize(mat3(T, B, N) * decodeNormalTex(nTex));
+        if (nTex.r + nTex.g > 0.0005) {
+            N = normalize(TBN * decodeNormalTex(nTex));
+            materialAO = decodeTexAO(nTex);
+        }
     }
   #endif
   #if defined WORLD_NETHER
@@ -226,7 +229,7 @@ void main() {
     blockLight *= facing;
   #endif
     vec3 minAmb = vec3(0.010, 0.011, 0.014) * MIN_AMBIENT;
-    vec3 lit = albedo.rgb * (lightCol * NoL * shadow + skyLight + blockLight + minAmb);
+    vec3 lit = albedo.rgb * (lightCol * NoL * shadow + (skyLight + blockLight + minAmb) * materialAO);
     float alpha = albedo.a;
   #if defined PBR_MATERIALS && !defined PARTICLE
     lit += albedo.rgb * sqrt(albedo.rgb) * (mat.emission * EMISSION_STRENGTH * EMISSION_SCALE);
@@ -240,7 +243,11 @@ void main() {
     }
 
     vec3 viewDirW = normalize(-scenePos);
-    float fres = realWater ? waterFresnel(dot(viewDirW, N)) : fresnelSchlick(saturate(dot(viewDirW, N)), vec3(0.02)).x;
+    vec3 surfaceFresnel = fresnelSchlick(saturate(dot(viewDirW, N)), vec3(0.02));
+  #if defined PBR_MATERIALS && !defined PARTICLE
+    if (!realWater) surfaceFresnel = materialFresnel(dot(viewDirW, N), mat.f0, albedo.rgb);
+  #endif
+    float fres = realWater ? waterFresnel(dot(viewDirW, N)) : luminance(surfaceFresnel);
 
     vec3 reflDirW = reflect(-viewDirW, N);
   #if defined WORLD_NETHER || defined WORLD_END
@@ -271,7 +278,7 @@ void main() {
   #if defined PBR_MATERIALS && !defined PARTICLE
     if (!realWater) {
         glintRough = max(mat.roughness * 0.5, 0.03);
-        glintF0 = vec3(max(mat.f0, 0.02));
+        glintF0 = materialF0(mat.f0, albedo.rgb);
     }
   #else
     if (!realWater) glintRough = 0.03;
@@ -305,9 +312,9 @@ void main() {
     } else {
       #if defined PBR_MATERIALS && !defined PARTICLE
         float glassSmooth = 1.0 - sqrt(saturate(mat.roughness));
-        float reflW = fres * (0.8 + 4.5 * glassSmooth * glassSmooth);
+        vec3 reflW = surfaceFresnel * (0.8 + 4.5 * glassSmooth * glassSmooth);
         lit += refl * reflW + sunSpec * mix(0.5, 1.0, glassSmooth);
-        alpha = max(alpha, saturate(reflW) * 0.6);
+        alpha = max(alpha, saturate(luminance(reflW)) * 0.6);
       #else
         lit += refl * fres * 0.8 + sunSpec * 0.5;
         alpha = max(alpha, fres * 0.5);
