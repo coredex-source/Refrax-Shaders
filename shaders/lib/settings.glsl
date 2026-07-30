@@ -16,6 +16,7 @@
 #define END_PORTAL_STYLE 4  //[0 1 2 3 4] 0=emerald 1=vibrant 2=deep_space 3=amethyst 4=void
 #define WATER_WAVES
 //#define WATER_NOISY_WAVES
+#define ARMOR_GLINT
 #define HAND_LIGHT
 #define LPV_FOG
 #define DH_NOISE
@@ -211,6 +212,7 @@ const float drynessHalflife = 800.0;
 #define SUN_GLINT_RADIUS 0.035 // [0.010 0.025 0.035 0.050 0.075 0.100 0.125 0.150 0.200 0.250 0.300]
 #define SUN_GLINT_STRENGTH 150.0 // [0.0 25.0 50.0 75.0 100.0 125.0 150.0 200.0 250.0 300.0]
 #define PBR_GLINT_STRENGTH 12.0 // [0.0 2.0 4.0 6.0 8.0 10.0 12.0 16.0 20.0 24.0 32.0]
+#define GLINT_STRENGTH 1.00 // [0.00 0.10 0.20 0.30 0.40 0.50 0.60 0.70 0.80 0.90 1.00 1.10 1.20 1.30 1.40 1.50 1.75 2.00 2.50 3.00]
 #define SHADOW_TINT 0.90 // [0.00 0.10 0.20 0.30 0.40 0.50 0.60 0.70 0.80 0.90 1.00]
 
 #define BLOCKLIGHT_SCALE 2.2 // [0.0 0.5 1.0 1.5 2.0 2.2 2.5 3.0 3.5 4.0 5.0]

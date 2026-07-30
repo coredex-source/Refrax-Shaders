@@ -58,6 +58,10 @@ vec4 lineOverlay(vec4 color) {
 }
 #else
 #define lineOverlay(c) (c)
+  #ifdef ARMOR_GLINT
+  #define REFRAX_GLINT_BUFFER
+uniform sampler2D colortex7;
+  #endif
 #endif
 
 vec3 blockLightAt(vec3 pos, vec3 N, float lmBlock) {
@@ -311,6 +315,10 @@ void main() {
             }
         }
     }
+#endif
+
+#ifdef REFRAX_GLINT_BUFFER
+    color += texture(colortex7, uv).rgb;
 #endif
 
     outColor = lineOverlay(vec4(color, 1.0));
