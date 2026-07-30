@@ -12,17 +12,18 @@ float waterWaveField(sampler2D noiseTex, vec2 p, float t, float detailFade) {
     vec2 broadUV = p * vec2(0.0054, 0.0062) - wind * (t * 0.0032);
     float broad = texture(noiseTex, broadUV).g;
 
+#if PERF_SAMPLE_DEN >= 6
+    return broad;
+#else
     vec2 detailUV = (turn * p) * vec2(0.021, 0.018) + vec2(-wind.y, wind.x) * (t * 0.0085);
     float detail = texture(noiseTex, detailUV).r;
     detail = detail * detail * (3.0 - 2.0 * detail);
-
-    float field = mix(broad, detail, 0.30 * detailFade);
-#ifdef WATER_NOISY_WAVES
-    vec2 microUV = (transpose(turn) * p) * vec2(0.043, 0.051) - wind.yx * (t * 0.013);
-    float micro = texture(noiseTex, microUV).b;
-    field = mix(field, micro, 0.10 * detailFade);
+    return mix(broad, detail, 0.10 * detailFade);
 #endif
-    return field;
+}
+
+vec3 waterReflectNormal(vec3 N) {
+    return normalize(mix(N, vec3(0.0, 1.0, 0.0), WATER_REFLECT_FLATTEN));
 }
 
 vec3 waterNormal(sampler2D noiseTex, vec2 p, float t, float viewDot, float sky, float rain, float viewDistance) {
@@ -41,8 +42,9 @@ vec3 waterNormal(sampler2D noiseTex, vec2 p, float t, float viewDot, float sky, 
     float exposure = mix(0.78, 1.0, sky);
     float weather = 1.0 + rain * 0.18;
     float grazingStability = smoothstep(0.025, 0.15, viewDot);
-    slope *= 0.29 * WATER_WAVE_INTENSITY * exposure * weather * grazingStability;
-    slope = clamp(slope, vec2(-0.55), vec2(0.55));
+
+    slope *= 3.0 * WATER_WAVE_INTENSITY * exposure * weather * grazingStability;
+    slope = clamp(slope, vec2(-0.24), vec2(0.24));
     return normalize(vec3(-slope.x, 1.0, -slope.y));
 #endif
 }

@@ -54,6 +54,28 @@ float emitterEmission(int id, float z) {
     return 0.4 * z3 * z;
 }
 
+float entityEmissionStrength(int id) {
+    if (id < 10101 || id > 10118) return 0.0;
+    if (id == 10101) return 1.00;
+    if (id == 10102) return 0.85;
+    if (id == 10103) return 0.80;
+    if (id == 10104) return 0.60;
+    if (id == 10105) return 0.55;
+    if (id == 10106) return 1.00;
+    if (id == 10107) return 0.70;
+    if (id == 10108) return 0.55;
+    if (id == 10109) return 0.65;
+    if (id == 10110) return 0.50;
+    if (id == 10111) return 0.45;
+    if (id == 10112) return 0.90;
+    if (id == 10113) return 0.75;
+    if (id == 10114) return 0.85;
+    if (id == 10115) return 0.80;
+    if (id == 10116) return 1.00;
+    if (id == 10117) return 0.60;
+    return 0.70;
+}
+
 float heldLightIntrinsic(int id) {
     if (id == 10008) return 15.0;
     vec3 c; float s;

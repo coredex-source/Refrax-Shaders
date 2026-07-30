@@ -170,6 +170,13 @@ void main() {
         color = rcasSharpen(cN, cW, color, cE, cS, exp2(-2.0 * (1.0 - SHARPEN_STRENGTH)));
 #endif
 
+#ifdef VIGNETTE
+    {
+        vec2 d = uv - 0.5;
+        color *= saturate(1.0 - dot(d, d) * VIGNETTE_STRENGTH * 1.7);
+    }
+#endif
+
     color += (ign(gl_FragCoord.xy) - 0.5) / 255.0;
     outColor = vec4(color, 1.0);
 }

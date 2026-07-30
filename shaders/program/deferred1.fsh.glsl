@@ -19,6 +19,7 @@ uniform sampler2D colortex3;
 uniform sampler2D colortex4;
 uniform sampler2D colortex5;
 uniform sampler2D colortex6;
+uniform sampler2D colortex10;
 #ifdef VOXY
 uniform sampler2D colortex8;
 #endif
@@ -136,6 +137,9 @@ void main() {
     float roughness = c3.z;
     float f0raw = c3.w;
     float ao = texture(colortex6, fsrRegionUV(uv, viewTexel)).r;
+    vec2 extra = texture(colortex10, uv).rg;
+    float sss = extra.r;
+    float porosity = extra.g;
     float dither = ignAnim(gl_FragCoord.xy, frameCounter);
 
 #if defined RAIN_PUDDLES && !defined WORLD_NETHER && !defined WORLD_END
@@ -149,9 +153,10 @@ void main() {
             vec3 worldPos = scenePos + cameraPosition;
             WetResult wr = computeWetness(worldPos, geomNW.y, lm.y, wetness, refraxWetBiome);
             float notEmit = 1.0 - saturate(emission);
-            albedo *= mix(1.0, WETNESS_DARKEN, max(wr.wet * 0.85, wr.puddle) * notEmit);
-            roughness = mix(roughness, roughness * 0.55, wr.wet * 0.6 * notEmit);
-            puddleCover = wr.puddle * notEmit;
+            WetModulation pr = porosityResponse(porosity);
+            albedo *= mix(1.0, WETNESS_DARKEN, saturate(max(wr.wet * 0.85, wr.puddle) * notEmit * pr.darken));
+            roughness = mix(roughness, roughness * 0.55, wr.wet * 0.6 * notEmit * pr.smoothen);
+            puddleCover = wr.puddle * notEmit * pr.puddle;
             if (puddleCover > 0.001) {
                 vec3 flatPuddleN = normalize(mix(geomNW, vec3(0.0, 1.0, 0.0), 0.9));
                 vec3 rippleN = puddleNormal(worldPos.xz, geomNW, frameTimeCounter, rainStrength);
@@ -214,6 +219,13 @@ void main() {
     vec3 color = albedo * diffuse;
     color += albedo * sqrt(albedo) * (emission * EMISSION_STRENGTH * EMISSION_SCALE);
 
+#ifdef SUBSURFACE_SCATTERING
+    if (sss > 0.0) {
+        vec3 sssShadow = mix(directShadow, vec3(1.0), 0.65);
+        color += subsurfaceTransmission(albedo, N, dirW, lightDir, sss) * lightCol * sssShadow;
+    }
+#endif
+
 #if defined PBR_MATERIALS || REFLECTION_MODE > 0
     vec3 V = -dirW;
     float smoothness = saturate(1.0 - sqrt(saturate(roughness)));
@@ -236,7 +248,7 @@ void main() {
     #else
         float skyVis = pow(lm.y, 2.0);
     #endif
-        vec3 refl = dimensionSky(reflDirW, sunDir, fogColor, frameTimeCounter, rainStrength) * skyVis;
+        vec3 refl = dimensionSkyReflection(reflDirW, sunDir, fogColor, frameTimeCounter, rainStrength) * skyVis;
         if (ssrReflect) {
             vec3 reflDirV = mat3(gbufferModelView) * reflDirW;
             vec3 hit;
@@ -267,7 +279,7 @@ void main() {
   #if RAIN_PUDDLE_REFLECTIONS == 0
         vec3 env = skyAmbient(sunDir, rainStrength) * (0.7 + 0.6 * skyVis);
   #else
-        vec3 env = dimensionSky(reflDir, sunDir, fogColor, frameTimeCounter, rainStrength) * skyVis;
+        vec3 env = dimensionSkyReflection(reflDir, sunDir, fogColor, frameTimeCounter, rainStrength) * skyVis;
     #if RAIN_PUDDLE_REFLECTIONS == 2
         {
             vec3 reflDirV = mat3(gbufferModelView) * reflDir;

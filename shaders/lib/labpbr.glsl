@@ -110,6 +110,33 @@ mat3 makeTBN(vec3 normal, vec3 tangent, float tangentSign) {
     return mat3(T, B, N);
 }
 
+vec3 subsurfaceTransmission(vec3 albedo, vec3 N, vec3 viewRayW, vec3 lightDir, float sss) {
+#ifndef SUBSURFACE_SCATTERING
+    return vec3(0.0);
+#else
+    if (sss <= 0.0) return vec3(0.0);
+    float NoL = dot(N, lightDir);
+    float wrapped = saturate((NoL + sss) / (1.0 + sss));
+    float extra = max(wrapped - saturate(NoL), 0.0);
+    float forward = pow(saturate(dot(viewRayW, lightDir)), 6.0) * 0.75 + 0.20;
+    return albedo * sqrt(albedo) * (extra * forward * sss * SSS_STRENGTH);
+#endif
+}
+
+struct WetModulation {
+    float darken;
+    float smoothen;
+    float puddle;
+};
+
+WetModulation porosityResponse(float porosity) {
+    float p = saturate(porosity) * POROSITY_WETNESS;
+    WetModulation w;
+    w.darken   = mix(0.80, 1.40, p);
+    w.smoothen = 1.0 - p * 0.70;
+    w.puddle   = 1.0 - p * 0.50;
+    return w;
+}
 
 vec2 wrapTile(vec2 uv, vec2 base, vec2 size) {
     return fract((uv - base) / size) * size + base;

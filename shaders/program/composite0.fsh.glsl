@@ -22,6 +22,8 @@ const int colortex5Format = RGBA16F;
 const int colortex6Format = R8;
 const int colortex8Format = RGBA16F;
 const int colortex9Format = RGBA16F;
+const int colortex10Format = RG8;
+const int colortex11Format = R8;
 */
 const bool colortex5Clear = false;
 const bool colortex9Clear = true;
@@ -29,6 +31,7 @@ const vec4 colortex9ClearColor = vec4(0.0, 0.0, 0.0, 0.0);
 
 uniform sampler2D colortex0;
 uniform sampler2D colortex2;
+uniform sampler2D colortex11;
 #ifdef VOXY
 uniform sampler2D colortex9;
 #endif
@@ -112,11 +115,14 @@ void main() {
     }
     if (isEyeInWater == 1) {
         float eyeSkyPre = float(eyeBrightnessSmooth.y) / 240.0;
+
+        vec2 p = uv * vec2(viewWidth / max(viewHeight, 1.0), 1.0);
+        float t = frameTimeCounter;
         vec2 wave = vec2(
-            sin(uv.y * 32.0 + frameTimeCounter * 1.9) + sin(uv.y * 13.0 - frameTimeCounter * 1.2),
-            cos(uv.x * 29.0 + frameTimeCounter * 1.6) + cos(uv.x * 11.0 + frameTimeCounter * 1.1)
+            sin(p.y * 58.0 + p.x * 19.0 + t * 2.3) + 0.5 * sin(p.y * 121.0 - p.x * 37.0 - t * 3.1),
+            cos(p.x * 54.0 - p.y * 23.0 + t * 2.0) + 0.5 * cos(p.x * 113.0 + p.y * 41.0 - t * 2.7)
         );
-        suv = clamp(suv + wave * (0.0014 + 0.0007 * eyeSkyPre) * UNDERWATER_DISTORTION, vec2(0.001), vec2(0.999));
+        suv = clamp(suv + wave * (0.00055 + 0.00030 * eyeSkyPre) * UNDERWATER_DISTORTION, vec2(0.001), vec2(0.999));
         depth0 = texture(depthtex0, suv).r;
 #ifdef LOD_ACTIVE
         lodDepth0 = texture(lodDepthTex0, suv).r;
@@ -128,6 +134,7 @@ void main() {
     vec4 c0 = texture(colortex0, suv);
 #endif
     vec3 color = c0.rgb;
+    color *= 1.0 - saturate(texture(colortex11, suv).r);
 
     vec3 viewPos = screenToView(vec3(uv, depth0), gbufferProjectionInverse);
     float skyMask = depth0 >= 1.0 ? 1.0 : 0.0;
@@ -220,7 +227,7 @@ void main() {
         if (skyMask > 0.5) color = mix(color, fogCol * (0.26 + lightBeam * 0.38 + upView * eyeSky * 0.12), 0.46);
     } else if (skyMask < 0.5) {
 #if defined WORLD_NETHER
-        vec3 fogCol = netherSky(dirW, fogColor, frameTimeCounter);
+        vec3 fogCol = netherFogColor(dirW, fogColor);
         float fogAmt = 1.0 - exp(-fogDist * FOG_BASE * 6.0 * FOG_DENSITY);
 #elif defined WORLD_END
         vec3 fogCol = endFogColor() * 1.6;
@@ -228,7 +235,7 @@ void main() {
 #else
         vec3 fogCol = skyGradient(dirW, sunDir, rainStrength);
         float hFall = exp(-max(cameraPosition.y + scenePos.y * 0.5 - 64.0, 0.0) * FOG_HEIGHT_FALLOFF);
-        float density = FOG_BASE * FOG_DENSITY * (1.0 + rainStrength * 3.0) * hFall;
+        float density = FOG_BASE * FOG_DENSITY * (1.0 + rainStrength * FOG_RAIN_DENSITY) * hFall;
         float fogAmt = 1.0 - exp(-fogDist * density);
 #endif
 #ifdef LOD_ACTIVE

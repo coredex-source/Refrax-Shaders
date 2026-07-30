@@ -233,6 +233,15 @@ void main() {
     float alpha = albedo.a;
   #if defined PBR_MATERIALS && !defined PARTICLE
     lit += albedo.rgb * sqrt(albedo.rgb) * (mat.emission * EMISSION_STRENGTH * EMISSION_SCALE);
+    #ifdef SUBSURFACE_SCATTERING
+    {
+        float fwdSss = mat.sss;
+        if (cutoutFoliage && fwdSss <= 0.0 && isFoliage(blockId)) fwdSss = FOLIAGE_SSS;
+        if (fwdSss > 0.0)
+            lit += subsurfaceTransmission(albedo.rgb, N, normalize(scenePos), lightDir, fwdSss)
+                 * lightCol * mix(shadow, vec3(1.0), 0.65);
+    }
+    #endif
   #endif
 
   #ifdef WATER
@@ -249,12 +258,13 @@ void main() {
   #endif
     float fres = realWater ? waterFresnel(dot(viewDirW, N)) : luminance(surfaceFresnel);
 
-    vec3 reflDirW = reflect(-viewDirW, N);
+    vec3 reflN = realWater ? waterReflectNormal(N) : N;
+    vec3 reflDirW = reflect(-viewDirW, reflN);
   #if defined WORLD_NETHER || defined WORLD_END
-    vec3 refl = dimensionSky(reflDirW, sunDir, fogColor, frameTimeCounter, rainStrength);
+    vec3 refl = dimensionSkyReflection(reflDirW, sunDir, fogColor, frameTimeCounter, rainStrength);
   #else
     float skyReflectionVisibility = mix(0.08, 1.0, lmcoord.y * lmcoord.y);
-    vec3 refl = skyGradient(reflDirW, sunDir, rainStrength) * skyReflectionVisibility;
+    vec3 refl = skyReflection(reflDirW, sunDir, rainStrength) * skyReflectionVisibility;
   #endif
     if (realWater && WATER_REFLECTION_MODE > 0 && fres > 0.025) {
         vec3 viewPos = (gbufferModelView * vec4(scenePos, 1.0)).xyz;
@@ -308,6 +318,19 @@ void main() {
         body = mix(body, body * 0.42, saturate(1.0 - trans.g));
         lit = mix(body, refl, fres) + sunSpec * 1.5;
         alpha = waterSurfaceAlpha(trans, fres);
+
+#ifdef WATER_FOAM
+        float foamEdge = 1.0 - saturate(waterDepth / FOAM_WIDTH);
+        if (foamEdge > 0.001) {
+            vec2 fuv = worldPos.xz * 0.115
+                     + vec2(frameTimeCounter * 0.013, frameTimeCounter * -0.009);
+            float fn = texture(noisetex, fuv).b;
+            float mask = saturate(foamEdge * foamEdge * (0.45 + 1.05 * fn) * FOAM_STRENGTH);
+            vec3 foamCol = (skyLight + lightCol * shadow * 0.35) * vec3(0.92, 0.95, 1.00);
+            lit = mix(lit, foamCol, mask);
+            alpha = max(alpha, mask * 0.92);
+        }
+#endif
         outWaterData = vec4(N, 2.0);
     } else {
       #if defined PBR_MATERIALS && !defined PARTICLE
@@ -375,9 +398,14 @@ void main() {
 #ifdef WEATHER
     {
         bool isRain = abs(albedo.r - albedo.b) > 0.015;
-        vec3 tint = isRain ? vec3(0.45, 0.60, 1.00) : vec3(0.88, 0.92, 1.00);
-        float bright = luminance(outColor.rgb);
-        outColor.rgb = mix(outColor.rgb, tint * (bright / max(luminance(tint), 1e-3)), isRain ? 0.7 : 0.3);
+        float streakLum = luminance(outColor.rgb);
+        vec3 neutral = vec3(streakLum);
+        vec3 cool = vec3(0.45, 0.60, 1.00);
+        cool *= streakLum / max(luminance(cool), 1e-3);
+
+        vec3 target = isRain ? mix(neutral, cool, RAIN_TINT)
+                             : mix(neutral, vec3(0.88, 0.92, 1.00) * (streakLum / 0.918), 0.35);
+        outColor.rgb = mix(outColor.rgb, target, isRain ? 0.85 : 0.30);
         outColor.a *= RAIN_OPACITY * (0.55 + 0.45 * rainStrength);
     }
 #endif

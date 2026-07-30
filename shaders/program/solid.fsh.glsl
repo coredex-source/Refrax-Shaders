@@ -33,10 +33,11 @@ flat in int blockId;
 in vec2 tileBase;
 in vec2 tileSize;
 
-/* RENDERTARGETS: 1,2,3 */
+/* RENDERTARGETS: 1,2,3,10 */
 layout(location = 0) out vec4 outAlbedo;
 layout(location = 1) out vec4 outNormal;
 layout(location = 2) out vec4 outMaterial;
+layout(location = 3) out vec4 outExtra;
 
 void main() {
     vec2 texcoord = uv;
@@ -52,6 +53,7 @@ void main() {
         outAlbedo = vec4(linearToSrgb(portal), 1.0);
         outNormal = vec4(N, 0.55);
         outMaterial = vec4(lmcoord, 1.0, 0.0);
+        outExtra = vec4(0.0);
         return;
     }
 #endif
@@ -123,16 +125,21 @@ void main() {
     emission = 1.0;
 #endif
 #ifdef ENTITY
-    if (entityId >= 10101 && entityId <= 10119) {
+    float entityGlow = entityEmissionStrength(entityId);
+    if (entityGlow > 0.0) {
         float glow = smoothstep(0.18, 0.75, luminance(albedo.rgb));
-        emission = max(emission, glow * (entityId == 10101 ? 1.0 : 0.75));
+        emission = max(emission, glow * entityGlow);
     }
+  #ifdef ENTITY_GLOWING\
+    emission = max(emission, 0.30);
+  #endif
 #endif
 #ifdef TERRAIN
     if (terrainFoliage) {
         mat.roughness = 1.0;
         mat.f0 = MATTE_FOLIAGE_F0;
     }
+    if (isFoliage(blockId) && mat.sss <= 0.0) mat.sss = FOLIAGE_SSS;
     if (emission <= 0.0 && isEmitter(blockId))
         emission = emitterEmission(blockId, luminance(albedo.rgb));
     if (mat.roughness > 0.85) {
@@ -150,6 +157,7 @@ void main() {
     outAlbedo = vec4(fract(scenePos.x / 8.0) < 0.5 ? dbgN.rgb : dbgS.rgb, 1.0);
     outNormal = vec4(normalize(normalW), 1.0);
     outMaterial = vec4(lmcoord, 1.0, 0.0);
+    outExtra = vec4(mat.sss, mat.porosity, 0.0, 0.0);
     return;
 #endif
 #endif
@@ -157,4 +165,5 @@ void main() {
     outAlbedo = vec4(albedo.rgb, pomShadow);
     outNormal = vec4(N, emission);
     outMaterial = vec4(lmcoord, mat.roughness, mat.f0);
+    outExtra = vec4(mat.sss, mat.porosity, 0.0, 0.0);
 }

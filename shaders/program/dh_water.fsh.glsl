@@ -73,11 +73,11 @@ void main() {
     vec3 minAmb = vec3(0.010, 0.011, 0.014) * MIN_AMBIENT;
 
     float fres = water ? waterFresnel(dot(viewDirW, N)) : fresnelSchlick(saturate(dot(viewDirW, N)), vec3(0.02)).x;
-    vec3 reflDirW = reflect(-viewDirW, N);
+    vec3 reflDirW = reflect(-viewDirW, water ? waterReflectNormal(N) : N);
 #if defined WORLD_NETHER || defined WORLD_END
-    vec3 refl = dimensionSky(reflDirW, sunDir, fogColor, frameTimeCounter, rainStrength);
+    vec3 refl = dimensionSkyReflection(reflDirW, sunDir, fogColor, frameTimeCounter, rainStrength);
 #else
-    vec3 refl = skyGradient(reflDirW, sunDir, rainStrength) * mix(0.08, 1.0, lmcoord.y * lmcoord.y);
+    vec3 refl = skyReflection(reflDirW, sunDir, rainStrength) * mix(0.08, 1.0, lmcoord.y * lmcoord.y);
 #endif
 
     float glintRough = water ? WATER_ROUGHNESS + saturate(dist / 96.0) * 0.018 : 0.03;

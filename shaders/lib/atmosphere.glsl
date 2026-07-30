@@ -26,22 +26,26 @@ vec3 moonColor(float melev) {
     return vec3(0.28, 0.40, 0.68) * MOON_BRIGHTNESS * smoothstep(-0.03, 0.06, melev);
 }
 
+vec3 overcastGrey(vec3 c, float level) {
+    return luminance(c) * level * vec3(1.05, 1.00, 0.90);
+}
+
 vec3 zenithColor(float selev, float rain) {
     vec3 day   = vec3(0.13, 0.32, 0.80);
     vec3 dusk  = vec3(0.09, 0.12, 0.30);
     vec3 night = vec3(0.0028, 0.0044, 0.011);
     vec3 c = mix(night, day, dayFactor(selev));
     c = mix(c, dusk, duskFactor(selev) * 0.80);
-    c = mix(c, vec3(luminance(c)) * 0.7, rain * 0.8);
+    c = mix(c, overcastGrey(c, 0.62), rain * 0.92);
     return c * SKY_SATURATION;
 }
 vec3 horizonColor(float selev, float rain) {
     vec3 day   = vec3(0.58, 0.75, 0.93);
-    vec3 dusk  = vec3(0.48, 0.26, 0.22); 
+    vec3 dusk  = vec3(0.48, 0.26, 0.22);
     vec3 night = vec3(0.010, 0.014, 0.030);
     vec3 c = mix(night, day, dayFactor(selev));
     c = mix(c, dusk, duskFactor(selev) * 0.85);
-    c = mix(c, vec3(luminance(c)) * 0.75, rain * 0.85);
+    c = mix(c, overcastGrey(c, 0.50), rain * 0.90);
     return c;
 }
 
@@ -119,18 +123,20 @@ vec3 celestial(vec3 dir, vec3 sunDir, float time, float rain) {
     return c * (1.0 - rain * 0.95);
 }
 
-
-
-
-
-vec3 netherSky(vec3 dir, vec3 fogCol, float time) {
+vec3 netherFogColor(vec3 dir, vec3 fogCol) {
     vec3 f = srgbToLinear(fogCol) * 1.2;
     float h = saturate(dir.y * 0.5 + 0.5);
-    vec3 sky = mix(f * 1.15, f * 0.25, h); 
-    float smoke = fbm3(vec3(dir.xz / max(abs(dir.y), 0.15) * 1.6, time * 0.02), 3);
-    sky *= 0.8 + 0.4 * smoke;
-    sky += vec3(0.30, 0.06, 0.008) * pow(1.0 - h, 3.0) * (0.5 + 0.5 * smoke);
-    return sky;
+    vec3 fog = mix(f * 1.15, f * 0.25, h);
+    fog += vec3(0.30, 0.06, 0.008) * pow(1.0 - h, 3.0) * 0.75;
+    return fog;
+}
+
+vec3 netherSky(vec3 dir, vec3 fogCol, float time) {
+    float h = saturate(dir.y * 0.5 + 0.5);
+    float smoke = fbm3(vec3(dir.xz / max(abs(dir.y), 0.45) * 1.6, time * 0.02), 3);
+    vec3 sky = netherFogColor(dir, fogCol) * (0.8 + 0.4 * smoke);
+    sky += vec3(0.30, 0.06, 0.008) * pow(1.0 - h, 3.0) * (0.5 * smoke - 0.375);
+    return max(sky, vec3(0.0));
 }
 
 
@@ -163,6 +169,20 @@ vec3 dimensionSky(vec3 dir, vec3 sunDir, vec3 fogCol, float time, float rain) {
     return endSky(dir, time);
 #else
     return skyGradient(dir, sunDir, rain) + celestial(dir, sunDir, time, rain);
+#endif
+}
+
+vec3 skyReflection(vec3 dir, vec3 sunDir, float rain) {
+    return skyGradient(dir, sunDir, rain) * (1.0 - rain * REFLECTION_RAIN_DIM);
+}
+
+vec3 dimensionSkyReflection(vec3 dir, vec3 sunDir, vec3 fogCol, float time, float rain) {
+#if defined WORLD_NETHER
+    return netherSky(dir, fogCol, time);
+#elif defined WORLD_END
+    return endSky(dir, time);
+#else
+    return skyReflection(dir, sunDir, rain);
 #endif
 }
 
