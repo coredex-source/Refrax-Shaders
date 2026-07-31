@@ -1,4 +1,4 @@
-/* Refrax :: gbuffers_basic */
+/* Refrax - basic.fsh.glsl */
 in vec4 vcolor;
 #if MC_VERSION >= 260100
 /* RENDERTARGETS: 0 */

@@ -12,6 +12,9 @@
 
 uniform sampler2D colortex0;
 uniform sampler2D colortex4;
+#ifdef AUTO_EXPOSURE
+uniform sampler2D colortex12;
+#endif
 uniform float viewWidth, viewHeight;
 uniform ivec2 eyeBrightnessSmooth;
 uniform int frameCounter;
@@ -116,8 +119,14 @@ void main() {
 #if defined WORLD_NETHER || defined WORLD_END
     float exposure = EXPOSURE * DIMENSION_EXPOSURE;
 #else
+  #ifdef AUTO_EXPOSURE
+    float autoEx = texture(colortex12, EXPOSURE_UV).r;
+    if (!(autoEx > 0.0)) autoEx = 1.0;
+    float exposure = EXPOSURE * clamp(autoEx, EXPOSURE_MIN, EXPOSURE_MAX);
+  #else
     float eyeSky = float(eyeBrightnessSmooth.y) / 240.0;
     float exposure = EXPOSURE * mix(1.30, 0.82, eyeSky);
+  #endif
 #endif
 
     vec3 color = processPixel(uv, bloom, exposure);

@@ -33,6 +33,9 @@ void emitterProfile(int id, out vec3 c, out float s) {
     else if (id == 10022) { c = vec3(1.00, 0.72, 0.45); s =  6.0; }
     else if (id == 10023) { c = vec3(1.00, 0.62, 0.30); s = 15.0; }
     else if (id == 10024) { c = vec3(0.38, 0.95, 0.78); s = 10.0; }
+    else if (id == 10025) { c = vec3(0.35, 0.85, 0.95); s = 15.0; }
+    else if (id == 10026) { c = vec3(0.45, 0.85, 0.45); s =  6.0; }
+    else if (id == 10027) { c = vec3(1.00, 0.96, 0.90); s = 15.0; }
 }
 
 vec3 blockLightColor(int id) {
@@ -111,6 +114,27 @@ vec3 heldLightAt(vec3 pos, int id1, int lv1, int id2, int lv2) {
     float falloff = pow(saturate(1.0 - length(pos) / level), 2.0);
     return col * (falloff * level * (0.12 * HAND_LIGHT_STRENGTH));
 #endif
+}
+
+bool isTintedGlass(int id) { return id >= 10070 && id <= 10085; }
+
+vec3 glassTint(int id) {
+    if (id == 10070) return vec3(0.95, 0.95, 0.95);
+    if (id == 10071) return vec3(1.00, 0.55, 0.18);
+    if (id == 10072) return vec3(0.90, 0.32, 0.85);
+    if (id == 10073) return vec3(0.42, 0.72, 1.00);
+    if (id == 10074) return vec3(1.00, 0.92, 0.25);
+    if (id == 10075) return vec3(0.55, 0.95, 0.30);
+    if (id == 10076) return vec3(1.00, 0.62, 0.75);
+    if (id == 10077) return vec3(0.35, 0.35, 0.35);
+    if (id == 10078) return vec3(0.70, 0.70, 0.70);
+    if (id == 10079) return vec3(0.25, 0.75, 0.80);
+    if (id == 10080) return vec3(0.60, 0.28, 0.90);
+    if (id == 10081) return vec3(0.25, 0.35, 0.95);
+    if (id == 10082) return vec3(0.55, 0.36, 0.22);
+    if (id == 10083) return vec3(0.36, 0.75, 0.28);
+    if (id == 10084) return vec3(0.95, 0.22, 0.20);
+    return vec3(0.16, 0.16, 0.16);
 }
 
 bool isNoOcclude(int id) { return id >= 10050; }

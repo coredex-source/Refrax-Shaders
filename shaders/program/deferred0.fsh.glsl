@@ -20,9 +20,45 @@ in vec2 uv;
 layout(location = 0) out vec4 outClouds;
 layout(location = 1) out vec4 outAO;
 
+float horizonAO(vec3 viewPos, vec3 normalV, float dither) {
+    int dirs = max(PERF_SCALED_COUNT(SSAO_SAMPLES, 3) / 2, 2);
+    const int STEPS = 4;
+    float radius = 0.85;
+    float ang = dither * 2.0 * PI;
+    float visibility = 0.0;
+
+    for (int d = 0; d < dirs; d++) {
+        float theta = ang + float(d) * (PI / float(dirs));
+        vec2 dir2 = vec2(cos(theta), sin(theta));
+
+        float maxHorizon = -1.0;
+        for (int s = 1; s <= STEPS; s++) {
+            float stepFrac = (float(s) - 0.5 * dither) / float(STEPS);
+            vec3 sp = viewPos + vec3(dir2 * (radius * stepFrac), 0.0);
+            vec3 spScreen = viewToScreen(sp, gbufferProjection);
+            if (clamp(spScreen.xy, 0.0, 1.0) != spScreen.xy) break;
+            float dep = texture(depthtex0, spScreen.xy).r;
+            if (dep >= 1.0) continue;
+            vec3 sv = screenToView(vec3(spScreen.xy, dep), gbufferProjectionInverse);
+
+            vec3 delta = sv - viewPos;
+            float len = length(delta);
+            if (len < 1e-4) continue;
+
+            float atten = 1.0 - saturate(len / radius);
+            float horizon = dot(delta / len, normalV) * atten;
+            maxHorizon = max(maxHorizon, horizon);
+        }
+        visibility += 1.0 - saturate(maxHorizon);
+    }
+    return saturate(visibility / float(dirs));
+}
+
 float computeAO(vec3 viewPos, vec3 normalV, float dither) {
 #if AO_MODE == 0
     return 1.0;
+#elif AO_MODE == 2
+    return horizonAO(viewPos, normalV, dither);
 #else
     int samples = PERF_SCALED_COUNT(SSAO_SAMPLES, 3);
     float radius = 0.55;
@@ -42,11 +78,7 @@ float computeAO(vec3 viewPos, vec3 normalV, float dither) {
         float rangeCheck = smoothstep(0.0, 1.0, radius / max(abs(viewPos.z - sv.z), 1e-4));
         occ += (diff > 0.02 ? 1.0 : 0.0) * rangeCheck;
     }
-    float ao = 1.0 - occ / float(samples);
-  #if AO_MODE == 2
-    ao = pow(ao, 1.6);
-  #endif
-    return ao;
+    return 1.0 - occ / float(samples);
 #endif
 }
 

@@ -5,6 +5,7 @@
 #include "/lib/blockid.glsl"
 #include "/lib/noise.glsl"
 #include "/lib/atmosphere.glsl"
+#include "/lib/clouds.glsl"
 #include "/lib/shadows.glsl"
 #include "/lib/voxel.glsl"
 #include "/lib/water.glsl"
@@ -79,8 +80,8 @@ vec3 blockLightAt(vec3 pos, vec3 N, float lmBlock) {
     lpv *= NETHER_LPV_SCALE;
   #endif
     float vanillaContribution = exp2(-4.0 * luminance(lpv));
-    vec3 colored = lpv + fallback * vanillaContribution * 0.35;
-    vec3 light = mix(fallback, max(colored, fallback * 0.25), fade);
+    vec3 colored = lpv + fallback * vanillaContribution * LPV_VANILLA_MIX;
+    vec3 light = mix(fallback, max(colored, fallback * LPV_VANILLA_MIX * 0.7), fade);
 #else
     vec3 light = fallback;
 #endif
@@ -164,6 +165,7 @@ void main() {
     return;
 #else
     vec3 N = normalize(normalW);
+    vec3 geomN = N;
     vec3 sunDir = normalize(mat3(gbufferModelViewInverse) * sunPosition);
     vec3 lightDir = normalize(mat3(gbufferModelViewInverse) * shadowLightPosition);
     float dither = ignAnim(gl_FragCoord.xy, frameCounter);
@@ -213,6 +215,10 @@ void main() {
     NoL = 0.6;
   #else
     vec3 shadow = getShadow(scenePos, N, NoL, dither, shadowModelView, shadowProjection, shadowtex0, shadowtex1, shadowcolor0);
+    #if defined CLOUD_SHADOWS && !defined WORLD_NETHER && !defined WORLD_END
+    if (NoL > 0.0 && shadow.g > 0.001)
+        shadow *= cloudShadow(scenePos + cameraPosition, lightDir, frameTimeCounter, rainStrength);
+    #endif
   #endif
 
   #if defined WORLD_NETHER
@@ -224,7 +230,7 @@ void main() {
     vec3 skyLight = skyAmbientDirectional(N, sunDir, rainStrength) * pow(lmcoord.y, 2.2);
     skyLight += lightCol * 0.05 * saturate(0.6 - 0.4 * N.y) * pow(lmcoord.y, 2.2);
   #endif
-    vec3 blockLight = blockLightAt(scenePos, N, lmcoord.x);
+    vec3 blockLight = blockLightAt(scenePos, geomN, lmcoord.x);
   #ifdef WORLD_NETHER
     blockLight *= facing;
   #endif

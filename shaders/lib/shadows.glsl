@@ -30,6 +30,30 @@ vec3 getShadow(vec3 scenePos, vec3 worldNormal, float NoL, float dither, mat4 sh
     mat2 rot = mat2(cos(ang), -sin(ang), sin(ang), cos(ang));
     float radius = SHADOW_SOFTNESS * 3.0 / float(shadowMapResolution) * clip.w;
 
+#ifdef PCSS
+    {
+        float searchR = radius * 2.5;
+        float blockerSum = 0.0;
+        float blockerHits = 0.0;
+        for (int i = 0; i < PCSS_BLOCKER_SAMPLES; i++) {
+            float br = sqrt((float(i) + 0.5) / float(PCSS_BLOCKER_SAMPLES));
+            float bt = float(i) * 2.39996 + ang;
+            vec2 boff = rot * (vec2(cos(bt), sin(bt)) * br) * searchR;
+            vec3 bc = distortShadowClip(vec3(clip.xy + boff, clip.z) / clip.w);
+            vec3 bsp = bc * 0.5 + 0.5;
+            if (clamp(bsp.xy, 0.0, 1.0) != bsp.xy) continue;
+            float bd = texture(stex1, bsp.xy).r;
+            if (bd < bsp.z - 0.00035) { blockerSum += bd; blockerHits += 1.0; }
+        }
+        if (blockerHits > 0.5) {
+            vec3 centre = distortShadowClip(clip.xyz / clip.w) * 0.5 + 0.5;
+            float dz = max(centre.z - blockerSum / blockerHits, 0.0);
+            float soften = saturate(dz * PCSS_SOFTEN);
+            radius *= mix(PCSS_MIN_SCALE, 1.0, soften);
+        }
+    }
+#endif
+
 #ifdef COLORED_SHADOWS
     vec3 spC = distortShadowClip(clip.xyz / clip.w) * 0.5 + 0.5;
     vec3 tint = clamp(spC.xy, 0.0, 1.0) == spC.xy ? texture(scol0, spC.xy).rgb : vec3(1.0);

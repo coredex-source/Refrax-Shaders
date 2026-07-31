@@ -1,4 +1,4 @@
-/* Refrax :: gbuffers_basic */
+/* Refrax - basic.vsh.glsl */
 #include "/lib/settings.glsl"
 #include "/lib/common.glsl"
 uniform float viewWidth, viewHeight;

@@ -4,6 +4,7 @@
 #include "/lib/common.glsl"
 #include "/lib/blockid.glsl"
 #include "/lib/atmosphere.glsl"
+#include "/lib/clouds.glsl"
 #include "/lib/shadows.glsl"
 #include "/lib/dh.glsl"
 #include "/lib/voxel.glsl"
@@ -77,8 +78,8 @@ vec3 blockLightAt(vec3 pos, vec3 N, float lmBlock) {
     lpv *= NETHER_LPV_SCALE;
   #endif
     float vanillaContribution = exp2(-4.0 * luminance(lpv));
-    vec3 colored = lpv + fallback * vanillaContribution * 0.35;
-    vec3 light = mix(fallback, max(colored, fallback * 0.25), fade);
+    vec3 colored = lpv + fallback * vanillaContribution * LPV_VANILLA_MIX;
+    vec3 light = mix(fallback, max(colored, fallback * LPV_VANILLA_MIX * 0.7), fade);
 #else
     vec3 light = fallback;
 #endif
@@ -142,13 +143,14 @@ void main() {
     float porosity = extra.g;
     float dither = ignAnim(gl_FragCoord.xy, frameCounter);
 
+    vec3 geomNV = cross(dFdx(viewPos), dFdy(viewPos));
+    geomNV = normalize(dot(geomNV, viewPos) > 0.0 ? -geomNV : geomNV);
+    vec3 geomNW = normalize(mat3(gbufferModelViewInverse) * geomNV);
+
 #if defined RAIN_PUDDLES && !defined WORLD_NETHER && !defined WORLD_END
     vec3 puddleN = N;
     float puddleCover = 0.0;
     {
-        vec3 geomNV = cross(dFdx(viewPos), dFdy(viewPos));
-        geomNV = normalize(dot(geomNV, viewPos) > 0.0 ? -geomNV : geomNV);
-        vec3 geomNW = normalize(mat3(gbufferModelViewInverse) * geomNV);
         if (wetness * refraxWetBiome > 0.001 && !isMetal(f0raw) && !isMatteFoliageMaterial(roughness, f0raw)) {
             vec3 worldPos = scenePos + cameraPosition;
             WetResult wr = computeWetness(worldPos, geomNW.y, lm.y, wetness, refraxWetBiome);
@@ -169,7 +171,7 @@ void main() {
 
 #ifdef DEBUG_LPV
   #ifdef COLORED_LIGHTING
-    { float dfade; outColor = vec4(sampleLPV(lpvSampler1, scenePos, cameraPosition, N, dfade), 1.0); return; }
+    { float dfade; outColor = vec4(sampleLPV(lpvSampler1, scenePos, cameraPosition, geomNW, dfade), 1.0); return; }
   #endif
 #endif
 
@@ -192,10 +194,14 @@ void main() {
 #else
     lightCol = (sunColor(sunDir.y) + moonColor(-sunDir.y)) * (1.0 - rainStrength * 0.9);
     shadow = getShadow(scenePos, N, NoL, dither, shadowModelView, shadowProjection, shadowtex0, shadowtex1, shadowcolor0);
+  #ifdef CLOUD_SHADOWS
+    if (NoL > 0.0 && shadow.g > 0.001)
+        shadow *= cloudShadow(scenePos + cameraPosition, lightDir, frameTimeCounter, rainStrength);
+  #endif
     vec3 skyLight = skyAmbientDirectional(N, sunDir, rainStrength) * pow(lm.y, 2.2);
     skyLight += lightCol * 0.05 * saturate(0.6 - 0.4 * N.y) * pow(lm.y, 2.2);
 #endif
-    vec3 blockLight = blockLightAt(scenePos, N, lm.x);
+    vec3 blockLight = blockLightAt(scenePos, geomNW, lm.x);
 #ifdef WORLD_NETHER
     blockLight *= facing;
 #endif

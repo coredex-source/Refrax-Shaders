@@ -16,6 +16,32 @@ float cloudDensity(vec3 wp, float time, float rain) {
     return saturate((base - (1.02 - cov)) * 2.6) * profile;
 }
 
+float cloudDensityShadow(vec3 wp, float time, float rain) {
+    vec3 sp = wp * CLOUD_SCALE + vec3(CLOUD_WIND * time * CLOUD_SCALE, 0.0).xzy;
+    float base = fbm3(sp * vec3(1.0, 2.4, 1.0), 3);
+    float cov = CLOUD_COVERAGE + rain * 0.28;
+    return saturate((base - (1.02 - cov)) * 2.6);
+}
+
+float cloudShadow(vec3 worldPos, vec3 lightDir, float time, float rain) {
+#if CLOUD_MODE == 0
+    return 1.0;
+#else
+    float ly = lightDir.y;
+    if (ly < 0.06) return 1.0;
+
+    float mid = CLOUD_ALTITUDE + CLOUD_THICKNESS * 0.5;
+    float travel = (mid - worldPos.y) / ly;
+    if (travel <= 0.0) return 1.0;
+    vec3 p = worldPos + lightDir * min(travel, 6000.0);
+
+    float od = cloudDensityShadow(p, time, rain) * CLOUD_THICKNESS * CLOUD_DENSITY;
+    float fade = smoothstep(0.06, 0.18, ly);
+
+    return mix(1.0, exp(-od), CLOUD_SHADOW_STRENGTH * fade);
+#endif
+}
+
 float hgPhase(float cosT, float g) {
     float g2 = g * g;
     return (1.0 - g2) / (4.0 * PI * pow(1.0 + g2 - 2.0 * g * cosT, 1.5));

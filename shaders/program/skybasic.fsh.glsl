@@ -1,2 +1,2 @@
-/* Refrax :: gbuffers_skybasic */
+/* Refrax - skybasic.fsh.glsl */
 void main() { discard; }

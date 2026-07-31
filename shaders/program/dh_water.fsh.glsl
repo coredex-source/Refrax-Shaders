@@ -3,6 +3,7 @@
 #include "/lib/settings.glsl"
 #include "/lib/common.glsl"
 #include "/lib/atmosphere.glsl"
+#include "/lib/clouds.glsl"
 #include "/lib/shadows.glsl"
 #include "/lib/water.glsl"
 #include "/lib/dh.glsl"
@@ -63,6 +64,10 @@ void main() {
 #else
     vec3 lightCol = (sunColor(sunDir.y) + moonColor(-sunDir.y)) * (1.0 - rainStrength * 0.9);
     vec3 shadow = getShadow(scenePos, N, NoL, dither, shadowModelView, shadowProjection, shadowtex0, shadowtex1, shadowcolor0);
+#ifdef CLOUD_SHADOWS
+    if (NoL > 0.0 && shadow.g > 0.001)
+        shadow *= cloudShadow(scenePos + cameraPosition, lightDir, frameTimeCounter, rainStrength);
+#endif
     vec3 skyLight = skyAmbientDirectional(N, sunDir, rainStrength) * pow(lmcoord.y, 2.2);
     skyLight += lightCol * 0.05 * saturate(0.6 - 0.4 * N.y) * pow(lmcoord.y, 2.2);
 #endif

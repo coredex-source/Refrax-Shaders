@@ -3,6 +3,7 @@
 #include "/lib/settings.glsl"
 #include "/lib/common.glsl"
 #include "/lib/atmosphere.glsl"
+#include "/lib/clouds.glsl"
 #include "/lib/water.glsl"
 #include "/lib/shadows.glsl"
 #include "/lib/dh.glsl"
@@ -24,8 +25,10 @@ const int colortex8Format = RGBA16F;
 const int colortex9Format = RGBA16F;
 const int colortex10Format = RG8;
 const int colortex11Format = R8;
+const int colortex12Format = R16F;
 */
 const bool colortex5Clear = false;
+const bool colortex12Clear = false;
 const bool colortex9Clear = true;
 const vec4 colortex9ClearColor = vec4(0.0, 0.0, 0.0, 0.0);
 
@@ -163,6 +166,9 @@ void main() {
         if (luminance(vlCol) > 0.002) {
             int steps = PERF_SCALED_COUNT(VL_STEPS, 3);
             float maxD = min(fogDist, VL_DISTANCE);
+#if defined CLOUD_SHADOWS && !defined WORLD_END
+            vlCol *= cloudShadow(cameraPosition + dirW * (maxD * 0.5), lightDir, frameTimeCounter, rainStrength);
+#endif
             float dt = maxD / float(steps);
             vec3 accum = vec3(0.0);
             for (int i = 0; i < steps; i++) {
@@ -192,7 +198,7 @@ void main() {
         for (int i = 0; i < steps; i++) {
             vec3 p = dirW * (dt * (float(i) + dither));
             float fade;
-            glow += sampleLPV(lpvSampler1, p, cameraPosition, vec3(0.0), fade) * fade;
+            glow += sampleLPVFog(lpvSampler1, p, cameraPosition, fade) * fade;
         }
         float media = LPV_FOG_DENSITY * (1.0 + rainStrength) * LPV_FOG_STRENGTH;
 #ifdef WORLD_NETHER

@@ -1,4 +1,4 @@
-/* Refrax :: shadow */
+/* Refrax - shadow.vsh.glsl */
 
 #include "/lib/settings.glsl"
 #include "/lib/common.glsl"
@@ -38,7 +38,8 @@ void main() {
         renderStage == MC_RENDER_STAGE_TERRAIN_CUTOUT ||
         renderStage == MC_RENDER_STAGE_TERRAIN_CUTOUT_MIPPED ||
         renderStage == MC_RENDER_STAGE_TERRAIN_TRANSLUCENT;
-    if (gl_VertexID % 4 == 0 && voxelStage) {
+    bool isBlockGeometry = dot(at_midBlock, at_midBlock) > 0.0;
+    if (gl_VertexID % 4 == 0 && voxelStage && isBlockGeometry) {
         vec4 centerView = gl_ModelViewMatrix * (gl_Vertex + vec4(at_midBlock / 64.0, 0.0));
         vec3 blockCenter = (shadowModelViewInverse * centerView).xyz;
         ivec3 idx = sceneToVoxelIndex(blockCenter, cameraPosition);
@@ -46,11 +47,10 @@ void main() {
             if (isEmitter(id)) {
                 vec3 c = blockLightColor(id);
                 imageStore(voxelImg, idx, vec4(c * c * LPV_SEED, 1.0));
+            } else if (isTintedGlass(id)) {
+                imageStore(voxelImg, idx, vec4(glassTint(id), 0.25));
             } else if (!isNoOcclude(id)) {
-                vec3 cell = fract(scenePos + cameraPosition);
-                vec3 cornerDist = min(cell, 1.0 - cell);
-                if (all(lessThan(cornerDist, vec3(0.02))))
-                    imageStore(voxelImg, idx, vec4(0.0, 0.0, 0.0, 1.0)); // occluder
+                imageStore(voxelImg, idx, vec4(0.0, 0.0, 0.0, 1.0));
             }
         }
     }

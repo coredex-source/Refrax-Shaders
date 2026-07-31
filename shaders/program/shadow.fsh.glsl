@@ -1,4 +1,4 @@
-/* Refrax :: shadow */
+/* Refrax - shadow.fsh.glsl */
 
 #include "/lib/settings.glsl"
 

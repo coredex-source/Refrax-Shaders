@@ -15,9 +15,9 @@ vec3 ffFetch(sampler3D s, ivec3 p) {
 vec4 floodfillStep(sampler3D prevLight, sampler3D voxels, ivec3 p, ivec3 shift) {
     vec4 vox = texelFetch(voxels, p, 0);
     if (vox.a > 0.5) {
-        
-        if (any(greaterThan(vox.rgb, vec3(0.0)))) return vec4(vox.rgb, 1.0);
-        return vec4(ffFetch(prevLight, p + shift) * 0.5, 1.0);
+        if (any(greaterThan(vox.rgb, vec3(0.0)))) return vec4(vox.rgb, 0.0);
+
+        return vec4(0.0, 0.0, 0.0, 1.0);
     }
 
     ivec3 q = p + shift;
@@ -28,10 +28,13 @@ vec4 floodfillStep(sampler3D prevLight, sampler3D voxels, ivec3 p, ivec3 shift) 
              + ffFetch(prevLight, q + ivec3( 0,-1, 0))
              + ffFetch(prevLight, q + ivec3( 0, 0, 1))
              + ffFetch(prevLight, q + ivec3( 0, 0,-1));
-    
+
     float divisor = 7.0 + (0.90 - LPV_FALLOFF) * 8.0;
-    
-    return vec4(clamp(sum / divisor, 0.0, 64.0), 0.0);
+    vec3 result = clamp(sum / divisor, 0.0, 64.0);
+
+    if (vox.a > 0.1) result *= vox.rgb;
+
+    return vec4(result, 0.0);
 }
 
 #endif

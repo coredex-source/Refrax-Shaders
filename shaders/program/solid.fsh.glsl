@@ -130,7 +130,7 @@ void main() {
         float glow = smoothstep(0.18, 0.75, luminance(albedo.rgb));
         emission = max(emission, glow * entityGlow);
     }
-  #ifdef ENTITY_GLOWING\
+  #ifdef ENTITY_GLOWING
     emission = max(emission, 0.30);
   #endif
 #endif
