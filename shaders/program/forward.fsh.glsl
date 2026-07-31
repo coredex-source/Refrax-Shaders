@@ -59,7 +59,7 @@ flat in int blockId;
 in vec2 tileBase;
 in vec2 tileSize;
 
-#ifdef WATER
+#if defined WATER || defined HAND
 /* RENDERTARGETS: 0,2 */
 layout(location = 0) out vec4 outColor;
 layout(location = 1) out vec4 outWaterData;
@@ -390,6 +390,9 @@ void main() {
     }
   #endif
 
+#if defined HAND && !defined WATER
+    outWaterData = vec4(N, 0.0);
+#endif
     outColor = vec4(lit, alpha);
 #ifdef OPAQUE_PARTICLE
   #ifdef PARTICLE_MARKER

@@ -26,7 +26,7 @@ vec3 tonemapAgX(vec3 c) {
     c = (c - minEv) / (maxEv - minEv);
     c = agxContrast(c);
     c = agxMatInv * c;
-    return saturate(c); 
+    return saturate(c);
 }
 
 vec3 tonemapACES(vec3 x) {
@@ -66,17 +66,19 @@ vec3 applyTonemap(vec3 c) {
 
 
 vec3 colorGrade(vec3 c) {
-    
+
     vec3 warm = vec3(1.06, 1.0, 0.92), cool = vec3(0.92, 0.99, 1.06);
     c *= mix(vec3(1.0), WHITE_BALANCE > 0.0 ? warm : cool, abs(WHITE_BALANCE));
-    
+    float blueDom = saturate((c.b - max(c.r, c.g)) * 3.5);
+    c *= mix(mix(vec3(1.0), vec3(1.10, 1.015, 0.90), CALM_WARMTH), vec3(1.0), blueDom);
+
     float l = luminance(c);
     float sat = length(c - l);
-    c = mix(vec3(l), c, mix(1.0, VIBRANCE, saturate(1.0 - sat * 2.0)));
-    
-    c = mix(vec3(luminance(c)), c, SATURATION);
-    
-    c = (c - 0.5) * CONTRAST + 0.5;
+    c = mix(vec3(l), c, mix(1.0, VIBRANCE * CALM_VIBRANCE, saturate(1.0 - sat * 2.0)));
+
+    c = mix(vec3(luminance(c)), c, SATURATION * CALM_SATURATION);
+
+    c = (c - 0.5) * (CONTRAST * CALM_CONTRAST) + 0.5;
     return saturate(c);
 }
 
@@ -84,7 +86,7 @@ vec3 colorGrade(vec3 c) {
 vec3 fxaaLite(sampler2D tex, vec2 uv, vec2 px, vec3 center) {
     float lC = luminance(center);
     vec3 n = texture(tex, uv + vec2(0.0, -px.y)).rgb;
-    vec3 s = texture(tex, uv + vec2(0.0,  px.y)).rgb;
+    vec3 s = texture(tex, uv + vec2(0.0, px.y)).rgb;
     vec3 e = texture(tex, uv + vec2( px.x, 0.0)).rgb;
     vec3 w = texture(tex, uv + vec2(-px.x, 0.0)).rgb;
     float lN = luminance(n), lS = luminance(s), lE = luminance(e), lW = luminance(w);

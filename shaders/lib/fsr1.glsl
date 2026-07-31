@@ -30,7 +30,7 @@
 #define REFRAX_FSR1
 
 float fsrMax3(vec3 c) { return max(c.r, max(c.g, c.b)); }
-vec3 fsrTonemap(vec3 c)   { return c / (1.0 + fsrMax3(c)); }
+vec3 fsrTonemap(vec3 c) { return c / (1.0 + fsrMax3(c)); }
 vec3 fsrUntonemap(vec3 c) { return c / max(1.0 - fsrMax3(c), 1e-4); }
 
 /* ---------------- EASU ---------------- */
@@ -39,9 +39,9 @@ void fsrEasuSet(inout vec2 dir, inout float len, vec2 pp,
                 float lA, float lB, float lC, float lD, float lE) {
     float w = 0.0;
     if (biS) w = (1.0 - pp.x) * (1.0 - pp.y);
-    if (biT) w =        pp.x  * (1.0 - pp.y);
-    if (biU) w = (1.0 - pp.x) *        pp.y;
-    if (biV) w =        pp.x  *        pp.y;
+    if (biT) w = pp.x * (1.0 - pp.y);
+    if (biU) w = (1.0 - pp.x) * pp.y;
+    if (biV) w = pp.x * pp.y;
 
     float dc = lD - lC;
     float cb = lC - lB;
@@ -87,9 +87,9 @@ vec3 fsrEasu(sampler2D tex, vec2 uvOut, vec2 inSize) {
 
     #define EASU_FETCH(dx, dy) fsrTonemap(max(texelFetch(tex, clamp(base + ivec2(dx, dy), ivec2(0), maxT), 0).rgb, vec3(0.0)))
     vec3 tB = EASU_FETCH( 0, -1), tC = EASU_FETCH( 1, -1);
-    vec3 tE = EASU_FETCH(-1,  0), tF = EASU_FETCH( 0,  0), tG = EASU_FETCH( 1,  0), tH = EASU_FETCH( 2,  0);
-    vec3 tI = EASU_FETCH(-1,  1), tJ = EASU_FETCH( 0,  1), tK = EASU_FETCH( 1,  1), tL = EASU_FETCH( 2,  1);
-    vec3 tN = EASU_FETCH( 0,  2), tO = EASU_FETCH( 1,  2);
+    vec3 tE = EASU_FETCH(-1, 0), tF = EASU_FETCH( 0, 0), tG = EASU_FETCH( 1, 0), tH = EASU_FETCH( 2, 0);
+    vec3 tI = EASU_FETCH(-1, 1), tJ = EASU_FETCH( 0, 1), tK = EASU_FETCH( 1, 1), tL = EASU_FETCH( 2, 1);
+    vec3 tN = EASU_FETCH( 0, 2), tO = EASU_FETCH( 1, 2);
     #undef EASU_FETCH
 
     #define EASU_LUMA(t) (t.b * 0.5 + (t.r * 0.5 + t.g))
@@ -128,16 +128,16 @@ vec3 fsrEasu(sampler2D tex, vec2 uvOut, vec2 inSize) {
     float aW = 0.0;
     fsrEasuTap(aC, aW, vec2( 0.0, -1.0) - pp, dir, len2, lob, clp, tB);
     fsrEasuTap(aC, aW, vec2( 1.0, -1.0) - pp, dir, len2, lob, clp, tC);
-    fsrEasuTap(aC, aW, vec2(-1.0,  0.0) - pp, dir, len2, lob, clp, tE);
-    fsrEasuTap(aC, aW, vec2( 0.0,  0.0) - pp, dir, len2, lob, clp, tF);
-    fsrEasuTap(aC, aW, vec2( 1.0,  0.0) - pp, dir, len2, lob, clp, tG);
-    fsrEasuTap(aC, aW, vec2( 2.0,  0.0) - pp, dir, len2, lob, clp, tH);
-    fsrEasuTap(aC, aW, vec2(-1.0,  1.0) - pp, dir, len2, lob, clp, tI);
-    fsrEasuTap(aC, aW, vec2( 0.0,  1.0) - pp, dir, len2, lob, clp, tJ);
-    fsrEasuTap(aC, aW, vec2( 1.0,  1.0) - pp, dir, len2, lob, clp, tK);
-    fsrEasuTap(aC, aW, vec2( 2.0,  1.0) - pp, dir, len2, lob, clp, tL);
-    fsrEasuTap(aC, aW, vec2( 0.0,  2.0) - pp, dir, len2, lob, clp, tN);
-    fsrEasuTap(aC, aW, vec2( 1.0,  2.0) - pp, dir, len2, lob, clp, tO);
+    fsrEasuTap(aC, aW, vec2(-1.0, 0.0) - pp, dir, len2, lob, clp, tE);
+    fsrEasuTap(aC, aW, vec2( 0.0, 0.0) - pp, dir, len2, lob, clp, tF);
+    fsrEasuTap(aC, aW, vec2( 1.0, 0.0) - pp, dir, len2, lob, clp, tG);
+    fsrEasuTap(aC, aW, vec2( 2.0, 0.0) - pp, dir, len2, lob, clp, tH);
+    fsrEasuTap(aC, aW, vec2(-1.0, 1.0) - pp, dir, len2, lob, clp, tI);
+    fsrEasuTap(aC, aW, vec2( 0.0, 1.0) - pp, dir, len2, lob, clp, tJ);
+    fsrEasuTap(aC, aW, vec2( 1.0, 1.0) - pp, dir, len2, lob, clp, tK);
+    fsrEasuTap(aC, aW, vec2( 2.0, 1.0) - pp, dir, len2, lob, clp, tL);
+    fsrEasuTap(aC, aW, vec2( 0.0, 2.0) - pp, dir, len2, lob, clp, tN);
+    fsrEasuTap(aC, aW, vec2( 1.0, 2.0) - pp, dir, len2, lob, clp, tO);
 
     vec3 pix = min(max4, max(min4, aC / aW));
     return fsrUntonemap(pix);

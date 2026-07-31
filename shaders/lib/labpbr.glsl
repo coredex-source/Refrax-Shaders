@@ -132,9 +132,9 @@ struct WetModulation {
 WetModulation porosityResponse(float porosity) {
     float p = saturate(porosity) * POROSITY_WETNESS;
     WetModulation w;
-    w.darken   = mix(0.80, 1.40, p);
+    w.darken = mix(0.80, 1.40, p);
     w.smoothen = 1.0 - p * 0.70;
-    w.puddle   = 1.0 - p * 0.50;
+    w.puddle = 1.0 - p * 0.50;
     return w;
 }
 

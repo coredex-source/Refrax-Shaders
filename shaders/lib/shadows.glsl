@@ -22,7 +22,6 @@ vec3 getShadow(vec3 scenePos, vec3 worldNormal, float NoL, float dither, mat4 sh
     if (dist > shadowDistance) return vec3(1.0);
     float fade = smoothstep(shadowDistance * 0.85, shadowDistance, dist);
 
-    
     vec3 biased = scenePos + worldNormal * (0.03 + dist * 0.012) * (2.0 - saturate(NoL));
     vec4 clip = shadowProj * (shadowMV * vec4(biased, 1.0));
 

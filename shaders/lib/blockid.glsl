@@ -23,18 +23,18 @@ void emitterProfile(int id, out vec3 c, out float s) {
     else if (id == 10011) { c = vec3(1.00, 0.85, 0.40); s = 15.0; }
     else if (id == 10012) { c = vec3(0.50, 1.00, 0.50); s = 15.0; }
     else if (id == 10013) { c = vec3(0.95, 0.70, 1.00); s = 15.0; }
-    else if (id == 10014) { c = vec3(0.70, 0.45, 1.00); s =  6.0; }
-    else if (id == 10015) { c = vec3(0.20, 0.70, 0.90); s =  4.0; }
-    else if (id == 10016) { c = vec3(0.55, 0.25, 1.00); s =  8.0; }
-    else if (id == 10017) { c = vec3(0.90, 0.75, 0.45); s =  6.0; }
+    else if (id == 10014) { c = vec3(0.70, 0.45, 1.00); s = 6.0; }
+    else if (id == 10015) { c = vec3(0.20, 0.70, 0.90); s = 4.0; }
+    else if (id == 10016) { c = vec3(0.55, 0.25, 1.00); s = 8.0; }
+    else if (id == 10017) { c = vec3(0.90, 0.75, 0.45); s = 6.0; }
     else if (id == 10018) { c = vec3(0.55, 0.20, 1.00); s = 13.0; }
-    else if (id == 10020) { c = vec3(1.00, 0.15, 0.05); s =  7.0; }
-    else if (id == 10021) { c = vec3(0.60, 0.40, 1.00); s =  5.0; }
-    else if (id == 10022) { c = vec3(1.00, 0.72, 0.45); s =  6.0; }
+    else if (id == 10020) { c = vec3(1.00, 0.15, 0.05); s = 7.0; }
+    else if (id == 10021) { c = vec3(0.60, 0.40, 1.00); s = 5.0; }
+    else if (id == 10022) { c = vec3(1.00, 0.72, 0.45); s = 6.0; }
     else if (id == 10023) { c = vec3(1.00, 0.62, 0.30); s = 15.0; }
     else if (id == 10024) { c = vec3(0.38, 0.95, 0.78); s = 10.0; }
     else if (id == 10025) { c = vec3(0.35, 0.85, 0.95); s = 15.0; }
-    else if (id == 10026) { c = vec3(0.45, 0.85, 0.45); s =  6.0; }
+    else if (id == 10026) { c = vec3(0.45, 0.85, 0.45); s = 6.0; }
     else if (id == 10027) { c = vec3(1.00, 0.96, 0.90); s = 15.0; }
 }
 
@@ -44,7 +44,7 @@ vec3 blockLightColor(int id) {
     return c * (s / 15.0);
 }
 
-bool isEmitter(int id)   { return id >= 10001 && id <= 10029; }
+bool isEmitter(int id) { return id >= 10001 && id <= 10029; }
 
 float emitterEmission(int id, float z) {
     float z3 = z * z * z;
@@ -138,10 +138,10 @@ vec3 glassTint(int id) {
 }
 
 bool isNoOcclude(int id) { return id >= 10050; }
-bool isFoliage(int id)   { return id >= 10050 && id <= 10059; }
+bool isFoliage(int id) { return id >= 10050 && id <= 10059; }
 bool isWavingShort(int id) { return id == 10050; }
-bool isWavingLeaf(int id)  { return id == 10051; }
-bool isWavingTall(int id)  { return id == 10052; }
+bool isWavingLeaf(int id) { return id == 10051; }
+bool isWavingTall(int id) { return id == 10052; }
 
 
 vec3 wavingOffset(int id, vec3 worldPos, vec3 midBlock, float time, float rain) {
@@ -163,7 +163,7 @@ vec3 wavingOffset(int id, vec3 worldPos, vec3 midBlock, float time, float rain) 
     vec2 stormSway = windDir * (gustWave * 1.25 + gustNoise * 1.6) + crossWind * sin(phase * 0.83 - t * 0.46) * 0.28;
     vec2 sway = mix(calmSway, stormSway, storm);
     if (isWavingShort(id) || isWavingTall(id)) {
-        float w = saturate(0.5 - midBlock.y / 40.0); 
+        float w = saturate(0.5 - midBlock.y / 40.0);
         if (isWavingTall(id)) w = saturate(w * 1.4);
         return vec3(sway.x, 0.0, sway.y) * 0.035 * w * strength;
     }

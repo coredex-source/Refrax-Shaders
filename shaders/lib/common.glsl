@@ -6,8 +6,8 @@ const float PI = 3.14159265359;
 #define saturate(x) clamp(x, 0.0, 1.0)
 
 float luminance(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
-vec3  srgbToLinear(vec3 c) { return pow(c, vec3(2.2)); }
-vec3  linearToSrgb(vec3 c) { return pow(max(c, 0.0), vec3(1.0 / 2.2)); }
+vec3 srgbToLinear(vec3 c) { return pow(c, vec3(2.2)); }
+vec3 linearToSrgb(vec3 c) { return pow(max(c, 0.0), vec3(1.0 / 2.2)); }
 
 
 float ign(vec2 px) {
@@ -80,13 +80,13 @@ vec3 discLightSpecular(vec3 N, vec3 V, vec3 L, float sinRadius, float roughness,
     vec3 Lr = normalize(L + toRay * saturate(sinRadius / max(length(toRay), 1e-5)));
     vec3 H = normalize(V + Lr);
     float NoH = saturate(dot(N, H)), NoV = max(dot(N, V), 1e-4), NoL = saturate(dot(N, Lr));
-    float a  = max(roughness * roughness, 2e-3);
+    float a = max(roughness * roughness, 2e-3);
     float ap = min(a + 0.5 * sinRadius, 1.0);
     float norm = a / ap; norm *= norm;
     float ap2 = ap * ap;
     float d = (NoH * ap2 - NoH) * NoH + 1.0;
     float D = ap2 / (PI * d * d) * norm;
-    vec3  F = f0 + (1.0 - f0) * pow(1.0 - saturate(dot(V, H)), 5.0);
+    vec3 F = f0 + (1.0 - f0) * pow(1.0 - saturate(dot(V, H)), 5.0);
     float G = 0.5 / mix(2.0 * NoL * NoV, NoL + NoV, ap);
     return min(D * G * NoL, 32.0) * F;
 }

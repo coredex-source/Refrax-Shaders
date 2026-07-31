@@ -17,7 +17,7 @@ uniform sampler2D colortex0;
 uniform sampler2D colortex1;
 uniform sampler2D colortex2;
 uniform sampler2D colortex3;
-uniform sampler2D colortex4;
+uniform sampler2D colortex13;
 uniform sampler2D colortex5;
 uniform sampler2D colortex6;
 uniform sampler2D colortex10;
@@ -117,7 +117,7 @@ void main() {
 
     if (depth >= 1.0 && !lodPixel) {
         vec3 sky = dimensionSky(dirW, sunDir, fogColor, frameTimeCounter, rainStrength);
-        vec4 clouds = texture(colortex4, fsrRegionUV(uv, viewTexel));
+        vec4 clouds = texture(colortex13, fsrRegionUV(uv, viewTexel));
         sky = sky * clouds.a + clouds.rgb;
 #ifdef VOXY
         vec4 lodLayer = texture(colortex8, uv);
@@ -313,7 +313,7 @@ void main() {
 
 #ifdef LOD_ACTIVE
     if (lodPixel) {
-        vec4 clouds = texture(colortex4, fsrRegionUV(uv, viewTexel));
+        vec4 clouds = texture(colortex13, fsrRegionUV(uv, viewTexel));
         color = color * clouds.a + clouds.rgb;
     }
 #endif

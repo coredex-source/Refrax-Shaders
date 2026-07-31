@@ -18,7 +18,7 @@ float raymarchSSRCustom(sampler2D depthTex, vec3 viewPos, vec3 reflDirView, mat4
         float diff = sceneView.z - p.z;
         float thickness = max(stepLen * 2.2, abs(p.z) * 0.01);
         if (diff > 0.0 && diff < thickness && d < 1.0) {
-            
+
             vec3 lo = p - reflDirView * stepLen, hi = p;
             for (int j = 0; j < refineSteps; j++) {
                 vec3 mid = (lo + hi) * 0.5;

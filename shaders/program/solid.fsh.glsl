@@ -33,13 +33,23 @@ flat in int blockId;
 in vec2 tileBase;
 in vec2 tileSize;
 
+#ifdef HAND
+/* RENDERTARGETS: 1,2,3,10,0 */
+#else
 /* RENDERTARGETS: 1,2,3,10 */
+#endif
 layout(location = 0) out vec4 outAlbedo;
 layout(location = 1) out vec4 outNormal;
 layout(location = 2) out vec4 outMaterial;
 layout(location = 3) out vec4 outExtra;
+#ifdef HAND
+layout(location = 4) out vec4 outForwardClear;
+#endif
 
 void main() {
+#ifdef HAND
+    outForwardClear = vec4(0.0, 0.0, 0.0, 1.0);
+#endif
     vec2 texcoord = uv;
     vec3 N = normalize(normalW);
 
@@ -145,7 +155,7 @@ void main() {
     if (mat.roughness > 0.85) {
         if (blockId == 10040) { mat.roughness = 0.28; mat.f0 = 0.045; }
         else if (blockId == 10041) { mat.roughness = 0.12; mat.f0 = 0.055; }
-        else if (blockId == 10042) { mat.roughness = 0.22; mat.f0 = 1.0;   }
+        else if (blockId == 10042) { mat.roughness = 0.22; mat.f0 = 1.0; }
         else if (blockId == 10043) { mat.roughness = 0.15; mat.f0 = 0.060; }
     }
 #endif

@@ -22,10 +22,10 @@ const float lvlScale = bloomLevelScale(BLOOM_LEVEL);
 const float lvlY = bloomLevelY(BLOOM_LEVEL);
 
 const ivec2 kTap[13] = ivec2[](
-    ivec2( 0,  0),
-    ivec2(-1, -1), ivec2( 1, -1), ivec2(-1,  1), ivec2( 1,  1),
-    ivec2(-2,  0), ivec2( 2,  0), ivec2( 0, -2), ivec2( 0,  2),
-    ivec2(-2, -2), ivec2( 2, -2), ivec2(-2,  2), ivec2( 2,  2));
+    ivec2( 0, 0),
+    ivec2(-1, -1), ivec2( 1, -1), ivec2(-1, 1), ivec2( 1, 1),
+    ivec2(-2, 0), ivec2( 2, 0), ivec2( 0, -2), ivec2( 0, 2),
+    ivec2(-2, -2), ivec2( 2, -2), ivec2(-2, 2), ivec2( 2, 2));
 const float kWeight[13] = float[](
     0.125,
     0.125, 0.125, 0.125, 0.125,

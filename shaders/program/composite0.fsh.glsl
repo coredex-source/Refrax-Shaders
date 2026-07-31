@@ -26,9 +26,13 @@ const int colortex9Format = RGBA16F;
 const int colortex10Format = RG8;
 const int colortex11Format = R8;
 const int colortex12Format = R16F;
+const int colortex13Format = RGBA16F;
+const int colortex14Format = R8;
 */
 const bool colortex5Clear = false;
 const bool colortex12Clear = false;
+const bool colortex13Clear = false;
+const bool colortex14Clear = false;
 const bool colortex9Clear = true;
 const vec4 colortex9ClearColor = vec4(0.0, 0.0, 0.0, 0.0);
 
@@ -65,8 +69,8 @@ vec4 sampleSceneScaled(vec2 suv, vec2 px) {
     vec2 r = px * (0.5 * max(1.0 / UPSCALE_SCALE - 1.0, 0.0));
     return 0.25 * (texture(colortex0, suv + vec2(-r.x, -r.y)) +
                    texture(colortex0, suv + vec2( r.x, -r.y)) +
-                   texture(colortex0, suv + vec2(-r.x,  r.y)) +
-                   texture(colortex0, suv + vec2( r.x,  r.y)));
+                   texture(colortex0, suv + vec2(-r.x, r.y)) +
+                   texture(colortex0, suv + vec2( r.x, r.y)));
 }
 #endif
 
@@ -159,7 +163,8 @@ void main() {
 #ifndef WORLD_NETHER
     {
   #ifdef WORLD_END
-        vec3 vlCol = vec3(0.22, 0.19, 0.30) * (1.0 - skyMask);
+        vec3 vlCol = (endLightColor() * 0.30 + endAmbient(vec3(0.0, 1.0, 0.0)) * 4.0)
+                   * (1.0 - skyMask);
   #else
         vec3 vlCol = sunColor(sunDir.y) + moonColor(-sunDir.y) * 2.0;
   #endif
@@ -191,8 +196,15 @@ void main() {
 #ifdef LPV_FOG
   #ifdef COLORED_LIGHTING
     {
+#ifdef WORLD_NETHER
+        int steps = PERF_SCALED_COUNT(NETHER_VL_STEPS, 6);
+        float maxD = min(fogDist, NETHER_VL_DISTANCE);
+        float media = LPV_FOG_DENSITY * LPV_FOG_STRENGTH * NETHER_FOG_GLOW;
+#else
         int steps = PERF_SCALED_COUNT(12, 4);
         float maxD = min(fogDist, LPV_FOG_DISTANCE);
+        float media = LPV_FOG_DENSITY * (1.0 + rainStrength) * LPV_FOG_STRENGTH;
+#endif
         float dt = maxD / float(steps);
         vec3 glow = vec3(0.0);
         for (int i = 0; i < steps; i++) {
@@ -200,10 +212,6 @@ void main() {
             float fade;
             glow += sampleLPVFog(lpvSampler1, p, cameraPosition, fade) * fade;
         }
-        float media = LPV_FOG_DENSITY * (1.0 + rainStrength) * LPV_FOG_STRENGTH;
-#ifdef WORLD_NETHER
-        media *= 0.5;
-#endif
         color += (glow / float(steps)) * maxD * media;
     }
   #endif
@@ -232,27 +240,40 @@ void main() {
         color += fogCol * caustic * 0.055;
         if (skyMask > 0.5) color = mix(color, fogCol * (0.26 + lightBeam * 0.38 + upView * eyeSky * 0.12), 0.46);
     } else if (skyMask < 0.5) {
-#if defined WORLD_NETHER
+#ifdef LOD_ACTIVE
+        float border = 0.0;
+        float maxOpacity = 0.90;
+#else
+        float border = smoothstep(far * 0.7, far * 0.95, dist);
+        float maxOpacity = 1.0;
+#endif
+
+#ifdef ATMOS_AERIAL_ACTIVE
+        float lightVis = 1.0;
+  #ifdef CLOUD_SHADOWS
+        lightVis = cloudShadow(cameraPosition + dirW * (fogDist * 0.5), lightDir,
+                               frameTimeCounter, rainStrength);
+  #endif
+        AerialResult ap = aerialPerspective(dirW, fogDist, cameraPosition.y + scenePos.y * 0.5, sunDir, lightDir, sunColor(sunDir.y) + moonColor(-sunDir.y), rainStrength, lightVis, maxOpacity);
+        color = color * ap.transmittance + ap.inscatter;
+        if (border > 0.0)
+            color = mix(color, skyGradient(dirW, sunDir, rainStrength), border);
+#else
+  #if defined WORLD_NETHER
         vec3 fogCol = netherFogColor(dirW, fogColor);
         float fogAmt = 1.0 - exp(-fogDist * FOG_BASE * 6.0 * FOG_DENSITY);
-#elif defined WORLD_END
+  #elif defined WORLD_END
         vec3 fogCol = endFogColor() * 1.6;
         float fogAmt = 1.0 - exp(-fogDist * FOG_BASE * 8.0 * FOG_DENSITY);
-#else
+  #else
         vec3 fogCol = skyGradient(dirW, sunDir, rainStrength);
         float hFall = exp(-max(cameraPosition.y + scenePos.y * 0.5 - 64.0, 0.0) * FOG_HEIGHT_FALLOFF);
         float density = FOG_BASE * FOG_DENSITY * (1.0 + rainStrength * FOG_RAIN_DENSITY) * hFall;
         float fogAmt = 1.0 - exp(-fogDist * density);
-#endif
-#ifdef LOD_ACTIVE
-        // LOD terrain continues past the far plane: no border fade, and the
-        // fog never fully swallows distant silhouettes.
-        float border = 0.0;
-        fogAmt = min(fogAmt, 0.90);
-#else
-        float border = smoothstep(far * 0.7, far * 0.95, dist);
-#endif
+  #endif
+        fogAmt = min(fogAmt, maxOpacity);
         color = mix(color, fogCol, saturate(max(fogAmt, border)));
+#endif
     }
 
     if (blindness > 0.0)

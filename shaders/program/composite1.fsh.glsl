@@ -25,7 +25,7 @@ layout(location = 1) out vec4 outHistory;
 
 #if defined TEMPORAL_AA || defined FSR
 float max3(vec3 v) { return max(v.x, max(v.y, v.z)); }
-vec3 taaTonemap(vec3 c)   { return c / (1.0 + max3(c)); }
+vec3 taaTonemap(vec3 c) { return c / (1.0 + max3(c)); }
 vec3 taaUntonemap(vec3 c) { return c / max(1.0 - max3(c), 1e-4); }
 #endif
 
@@ -146,8 +146,8 @@ void main() {
     ivec2 itex = ivec2(clamp(posPx, vec2(0.5), regionMax));
     ivec2 maxT = ivec2(inSize) - 1;
     #define TAAU_FETCH(dx, dy) rgbToYcocg(taaTonemap(max(texelFetch(colortex0, clamp(itex + ivec2(dx, dy), ivec2(0), maxT), 0).rgb, vec3(0.0))))
-    vec3 nA = TAAU_FETCH(-1,  1), nB = TAAU_FETCH(0,  1), nC = TAAU_FETCH(1,  1);
-    vec3 nD = TAAU_FETCH(-1,  0), nE = TAAU_FETCH(0,  0), nF = TAAU_FETCH(1,  0);
+    vec3 nA = TAAU_FETCH(-1, 1), nB = TAAU_FETCH(0, 1), nC = TAAU_FETCH(1, 1);
+    vec3 nD = TAAU_FETCH(-1, 0), nE = TAAU_FETCH(0, 0), nF = TAAU_FETCH(1, 0);
     vec3 nG = TAAU_FETCH(-1, -1), nH = TAAU_FETCH(0, -1), nI = TAAU_FETCH(1, -1);
     #undef TAAU_FETCH
 

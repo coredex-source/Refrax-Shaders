@@ -1,10 +1,24 @@
-/* Refrax — lib/atomsphere.glsl */
+/* Refrax — lib/atmosphere.glsl */
 #ifndef REFRAX_ATMOSPHERE
 #define REFRAX_ATMOSPHERE
 
 #include "/lib/settings.glsl"
 #include "/lib/common.glsl"
 #include "/lib/noise.glsl"
+
+#ifdef PHYSICAL_SKY
+  #if !defined WORLD_NETHER && !defined WORLD_END && !defined REFRAX_NO_ATMOS_LUT
+    #define ATMOS_LUT_ACTIVE
+    #define ATMOS_LUT_READ
+  #endif
+#endif
+#include "/lib/atmosphere_lut.glsl"
+
+#ifdef AERIAL_PERSPECTIVE
+  #ifdef ATMOS_LUT_ACTIVE
+    #define ATMOS_AERIAL_ACTIVE
+  #endif
+#endif
 
 
 float dayFactor(float selev) { return smoothstep(-0.05, 0.10, selev); }
@@ -13,17 +27,27 @@ float duskFactor(float selev) { return exp(-selev * selev * 180.0); }
 
 
 vec3 sunColor(float selev) {
+#ifdef ATMOS_LUT_ACTIVE
+    return atmosLightTransmittance(selev) * (SUN_BRIGHTNESS * ATMOS_SUN_GAIN)
+         * smoothstep(-0.012, 0.012, selev);
+#else
     float t = saturate(selev * 5.0);
     vec3 ember = vec3(1.00, 0.22, 0.04);
     vec3 amber = vec3(1.00, 0.55, 0.22);
-    vec3 day   = vec3(1.00, 0.97, 0.92);
+    vec3 day = vec3(1.00, 0.97, 0.92);
     vec3 c = mix(mix(ember, amber, saturate(t * 2.2)), day, t * t);
     float up = smoothstep(-0.03, 0.02, selev);
-    return c * SUN_BRIGHTNESS * up * mix(0.18, 1.0, t); 
+    return c * SUN_BRIGHTNESS * up * mix(0.18, 1.0, t);
+#endif
 }
 
 vec3 moonColor(float melev) {
+#ifdef ATMOS_LUT_ACTIVE
+    return atmosLightTransmittance(melev) * ATMOS_MOON_TINT
+         * (MOON_BRIGHTNESS * ATMOS_MOON_GAIN) * smoothstep(-0.012, 0.012, melev);
+#else
     return vec3(0.28, 0.40, 0.68) * MOON_BRIGHTNESS * smoothstep(-0.03, 0.06, melev);
+#endif
 }
 
 vec3 overcastGrey(vec3 c, float level) {
@@ -31,8 +55,8 @@ vec3 overcastGrey(vec3 c, float level) {
 }
 
 vec3 zenithColor(float selev, float rain) {
-    vec3 day   = vec3(0.13, 0.32, 0.80);
-    vec3 dusk  = vec3(0.09, 0.12, 0.30);
+    vec3 day = vec3(0.13, 0.32, 0.80);
+    vec3 dusk = vec3(0.09, 0.12, 0.30);
     vec3 night = vec3(0.0028, 0.0044, 0.011);
     vec3 c = mix(night, day, dayFactor(selev));
     c = mix(c, dusk, duskFactor(selev) * 0.80);
@@ -40,8 +64,8 @@ vec3 zenithColor(float selev, float rain) {
     return c * SKY_SATURATION;
 }
 vec3 horizonColor(float selev, float rain) {
-    vec3 day   = vec3(0.58, 0.75, 0.93);
-    vec3 dusk  = vec3(0.48, 0.26, 0.22);
+    vec3 day = vec3(0.58, 0.75, 0.93);
+    vec3 dusk = vec3(0.48, 0.26, 0.22);
     vec3 night = vec3(0.010, 0.014, 0.030);
     vec3 c = mix(night, day, dayFactor(selev));
     c = mix(c, dusk, duskFactor(selev) * 0.85);
@@ -50,6 +74,17 @@ vec3 horizonColor(float selev, float rain) {
 }
 
 vec3 skyGradient(vec3 dir, vec3 sunDir, float rain) {
+#ifdef ATMOS_LUT_ACTIVE
+    vec3 lookDir = vec3(dir.x, max(dir.y, 0.0), dir.z);
+    float ll = length(lookDir);
+    lookDir = ll > 1e-4 ? lookDir / ll : vec3(0.0, 1.0, 0.0);
+
+    vec3 sky = atmosSkyRadiance(lookDir, sunDir) * mix(1.0, 0.50, saturate(-dir.y * 4.0));
+
+    sky += ATMOS_NIGHT_FLOOR * (1.0 - dayFactor(sunDir.y));
+    sky = mix(sky, overcastGrey(sky, 0.62), rain * 0.92);
+    return sky * SKY_SATURATION;
+#else
     float selev = sunDir.y;
     vec3 zen = zenithColor(selev, rain);
     vec3 hor = horizonColor(selev, rain);
@@ -57,37 +92,58 @@ vec3 skyGradient(vec3 dir, vec3 sunDir, float rain) {
     vec3 sky = mix(zen, hor, h);
     float clearW = 1.0 - rain * 0.85;
 
-    
-    
+
+
     float dusk = duskFactor(selev);
     if (dusk > 0.001) {
         vec2 dirH = dir.xz / max(length(dir.xz), 1e-4);
         vec2 sunH = sunDir.xz / max(length(sunDir.xz), 1e-4);
-        float az  = dot(dirH, sunH) * 0.5 + 0.5; 
+        float az = dot(dirH, sunH) * 0.5 + 0.5;
         float az2 = az * az;
         vec3 glowCol = mix(vec3(0.30, 0.16, 0.34), vec3(1.05, 0.36, 0.08), az2);
         float band = pow(1.0 - saturate(dir.y), 2.5);
         sky += glowCol * (dusk * band * (0.25 + 1.05 * az2 * az) * clearW);
     }
 
-    
+
     float sd = saturate(dot(dir, sunDir));
     sky += (pow(sd, 9.0) * 0.5 + pow(sd, 120.0)) * sunColor(selev) * 0.16 * (0.4 + h) * clearW;
     float md = saturate(dot(dir, -sunDir));
     sky += pow(md, 20.0) * moonColor(-selev) * 0.6 * clearW;
 
-    if (dir.y < 0.0) sky = mix(sky, hor * 0.5, saturate(-dir.y * 4.0)); 
+    if (dir.y < 0.0) sky = mix(sky, hor * 0.5, saturate(-dir.y * 4.0));
     return sky;
+#endif
 }
 
 
 vec3 skyAmbient(vec3 sunDir, float rain) {
+#ifdef ATMOS_LUT_ACTIVE
+    const float RING_Y = 0.574;
+    const float RING_H = 0.819;
+    vec3 up = vec3(0.0, 1.0, 0.0);
+    vec3 s = vec3(sunDir.x, 0.0, sunDir.z);
+    float sl = length(s);
+    s = sl > 1e-4 ? s / sl : vec3(1.0, 0.0, 0.0);
+    vec3 t = cross(up, s);
+    vec3 ringUp = vec3(0.0, RING_Y, 0.0);
+
+    vec3 amb = atmosSkyRadiance(up, sunDir) * 0.50
+             + atmosSkyRadiance(ringUp + s * RING_H, sunDir) * 0.175
+             + atmosSkyRadiance(ringUp - s * RING_H, sunDir) * 0.175
+             + atmosSkyRadiance(ringUp + t * RING_H, sunDir) * 0.075
+             + atmosSkyRadiance(ringUp - t * RING_H, sunDir) * 0.075;
+
+    amb = mix(amb, overcastGrey(amb, 0.62), rain * 0.90);
+    return max(amb * SKY_SATURATION, vec3(0.0030, 0.0042, 0.0080));
+#else
     float selev = sunDir.y;
     vec3 amb = zenithColor(selev, rain) * 0.60 + horizonColor(selev, rain) * 0.40;
-    
+
     amb += vec3(0.45, 0.18, 0.05) * duskFactor(selev) * 0.18 * (1.0 - rain * 0.85);
-    
+
     return max(amb * 0.85, vec3(0.0030, 0.0042, 0.0080));
+#endif
 }
 
 
@@ -111,17 +167,61 @@ float starField(vec3 dir, float time) {
 vec3 celestial(vec3 dir, vec3 sunDir, float time, float rain) {
     float selev = sunDir.y;
     vec3 c = vec3(0.0);
-    
+
     float sd = dot(dir, sunDir);
     c += smoothstep(0.99955, 0.99985, sd) * sunColor(selev) * 24.0;
-    
+#ifdef ATMOS_LUT_ACTIVE
+    c += pow(saturate(sd), 90.0) * sunColor(selev) * 0.55 * (1.0 - rain * 0.90);
+#endif
+
     float md = dot(dir, -sunDir);
+#ifdef ATMOS_LUT_ACTIVE
+    c += smoothstep(0.99965, 0.99990, md) * vec3(0.75, 0.80, 0.95) * 1.6
+       * smoothstep(-0.06, 0.06, -selev) * atmosLightTransmittance(-selev);
+#else
     c += smoothstep(0.99965, 0.99990, md) * vec3(0.75, 0.80, 0.95) * 1.6 * smoothstep(-0.06, 0.06, -selev);
-    
+#endif
+
     float night = smoothstep(0.02, -0.08, selev);
     c += starField(dir, time) * night * vec3(0.55, 0.62, 0.80) * saturate(dir.y * 2.0);
     return c * (1.0 - rain * 0.95);
 }
+
+
+#ifdef ATMOS_AERIAL_ACTIVE
+struct AerialResult {
+    vec3 transmittance;
+    vec3 inscatter;
+};
+
+AerialResult aerialPerspective(vec3 dirW, float dist, float midY, vec3 sunDir, vec3 lightDir, vec3 lightCol, float rain, float lightVis, float maxOpacity) {
+    float hFall = exp(-max(midY - 64.0, 0.0) * FOG_HEIGHT_FALLOFF);
+    float density = FOG_BASE * FOG_DENSITY * (1.0 + rain * FOG_RAIN_DENSITY) * hFall;
+    float k = density / ATMOS_SIGMA_E_REF;
+
+    vec3 sigmaR = ATMOS_RAYLEIGH_AERIAL * k;
+    float sigmaM = ATMOS_MIE_S * ATMOS_HAZE_E * k;
+    vec3 sigmaE = max((ATMOS_RAYLEIGH_AERIAL + vec3((ATMOS_MIE_S + ATMOS_MIE_A) * ATMOS_HAZE_E)) * k, vec3(1e-9));
+
+    float cosT = dot(dirW, lightDir);
+    vec3 direct = (sigmaR * atmosRayleighPhase(cosT) + vec3(sigmaM * atmosMiePhase(cosT))) * lightCol * lightVis * AERIAL_STRENGTH;
+
+    vec3 ambDir = vec3(dirW.x, max(dirW.y, 0.02), dirW.z);
+
+    vec3 ambient = (sigmaR + vec3(sigmaM)) * atmosSkyRadiance(ambDir, sunDir) * (ATMOS_AERIAL_AMBIENT / HORIZON_BRIGHTNESS_E);
+    if (rain > 0.001) {
+        vec3 grey = overcastGrey(ambient, 0.62);
+        ambient = mix(ambient, grey, rain * 0.90);
+        direct *= 1.0 - rain * 0.85;
+    }
+
+    AerialResult r;
+    r.transmittance = max(exp(-sigmaE * dist), vec3(1.0 - maxOpacity));
+    r.inscatter = (direct + ambient) * (1.0 - r.transmittance) / sigmaE;
+    return r;
+}
+#endif
+
 
 vec3 netherFogColor(vec3 dir, vec3 fogCol) {
     vec3 f = srgbToLinear(fogCol) * 1.2;
@@ -145,18 +245,18 @@ vec3 endFogColor() { return vec3(0.034, 0.014, 0.058) * END_AMBIENT; }
 
 
 vec3 endSky(vec3 dir, float time) {
-    vec3 sky = vec3(0.012, 0.007, 0.022); 
+    vec3 sky = vec3(0.012, 0.007, 0.022);
     vec3 axis = normalize(vec3(0.42, 1.0, 0.18));
-    float band = exp(-pow(dot(dir, axis), 2.0) * 4.5); 
-    float neb  = fbm3(dir * 3.1 + vec3(0.0, time * 0.004, 0.0), 4);
-    float hue  = fbm3(dir * 7.7 + 13.1, 3);
+    float band = exp(-pow(dot(dir, axis), 2.0) * 4.5);
+    float neb = fbm3(dir * 3.1 + vec3(0.0, time * 0.004, 0.0), 4);
+    float hue = fbm3(dir * 7.7 + 13.1, 3);
     vec3 nebCol = mix(vec3(0.14, 0.04, 0.26), vec3(0.04, 0.17, 0.21), hue);
     sky += band * (0.10 + 1.8 * smoothstep(0.45, 0.80, neb)) * nebCol;
-    sky += band * vec3(0.08, 0.05, 0.13); 
+    sky += band * vec3(0.08, 0.05, 0.13);
     float stars = starField(dir, time);
     sky += stars * mix(vec3(0.40, 0.33, 0.55), vec3(0.65, 0.50, 0.90), band);
-    sky *= mix(1.0, 0.35, smoothstep(-0.10, -0.60, dir.y)); 
-    
+    sky *= mix(1.0, 0.35, smoothstep(-0.10, -0.60, dir.y));
+
     float haze = pow(1.0 - abs(dir.y), 3.0);
     return mix(sky, endFogColor() * 1.6, haze * 0.75);
 }

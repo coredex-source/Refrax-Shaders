@@ -7,15 +7,17 @@
 #define COLORED_SHADOWS
 #define COLORED_LIGHTING
 #define CLOUD_SHADOWS
+#define PHYSICAL_SKY
+#define AERIAL_PERSPECTIVE
 #define GOD_RAYS
 #define BLOOM
-#define AA_MODE 6           //[0 1 2 3 4 5 6] 0=off 1=FXAA 2=TAA 3=SMAA 4=TSMAA 5=alpha-tested 6=TAA+FXAA
+#define AA_MODE 6 //[0 1 2 3 4 5 6] 0=off 1=FXAA 2=TAA 3=SMAA 4=TSMAA 5=alpha-tested 6=TAA+FXAA
 #define PBR_MATERIALS
 #define SUBSURFACE_SCATTERING
 #define POM
-#define PERFORMANCE_MODE 3  //[1 2 3 4 5 6 7] 1=off 2=low 3=medium 4=high 5=very_high 6=extreme 7=overdrive
+#define PERFORMANCE_MODE 3 //[1 2 3 4 5 6 7] 1=off 2=low 3=medium 4=high 5=very_high 6=extreme 7=overdrive
 #define WAVING_PLANTS
-#define END_PORTAL_STYLE 4  //[0 1 2 3 4] 0=emerald 1=vibrant 2=deep_space 3=amethyst 4=void
+#define END_PORTAL_STYLE 4 //[0 1 2 3 4] 0=emerald 1=vibrant 2=deep_space 3=amethyst 4=void
 #define WATER_FOAM
 #define WATER_WAVES
 #define ARMOR_GLINT
@@ -72,6 +74,7 @@
 #define PERF_SCALED_CONST(count) (((count) * PERF_SAMPLE_NUM + PERF_SAMPLE_DEN - 1) / PERF_SAMPLE_DEN)
 
 #define CLOUD_MODE 2 //[0 1 2] 0=off 1=2D 2=volumetric
+#define CLOUD_TEMPORAL 4 //[1 2 4] 1=off 2=half rate 4=quarter rate
 #define AO_MODE 1 //[0 1 2] 0=off 1=SSAO 2=GTAO-ish
 #define REFLECTION_MODE 1 //[0 1 2] 0=sky-only 1=SSR 2=high SSR
 #define EXPOSURE_REGION 0.015
@@ -141,13 +144,13 @@
 
 #define FSR_SCALE UPSCALE_SCALE
 
-#define VL_STEPS 12          // [4 6 8 12 16 24 32 48]
-#define CLOUD_STEPS 12       // [6 8 12 16 20 24 32 48 64]
-#define CLOUD_LIGHT_STEPS 3  // [2 3 4 6 8]
-#define SSR_STEPS 48         // [8 12 16 24 32 48 64]
-#define SSAO_SAMPLES 8       // [4 6 8 12 16 24]
-#define SHADOW_SAMPLES 4     // [1 2 4 6 9 12 16 25]
-#define POM_SAMPLES 16       // [8 16 24 32 48]
+#define VL_STEPS 12 // [4 6 8 12 16 24 32 48]
+#define CLOUD_STEPS 12 // [6 8 12 16 20 24 32 48 64]
+#define CLOUD_LIGHT_STEPS 3 // [2 3 4 6 8]
+#define SSR_STEPS 48 // [8 12 16 24 32 48 64]
+#define SSAO_SAMPLES 8 // [4 6 8 12 16 24]
+#define SHADOW_SAMPLES 4 // [1 2 4 6 9 12 16 25]
+#define POM_SAMPLES 16 // [8 16 24 32 48]
 
 #define EXPOSURE 1.00 // [0.25 0.26 0.27 0.28 0.29 0.30 0.31 0.32 0.33 0.34 0.35 0.36 0.37 0.38 0.39 0.40 0.41 0.42 0.43 0.44 0.45 0.46 0.47 0.48 0.49 0.50 0.51 0.52 0.53 0.54 0.55 0.56 0.57 0.58 0.59 0.60 0.61 0.62 0.63 0.64 0.65 0.66 0.67 0.68 0.69 0.70 0.71 0.72 0.73 0.74 0.75 0.76 0.77 0.78 0.79 0.80 0.81 0.82 0.83 0.84 0.85 0.86 0.87 0.88 0.89 0.90 0.91 0.92 0.93 0.94 0.95 0.96 0.97 0.98 0.99 1.00 1.01 1.02 1.03 1.04 1.05 1.06 1.07 1.08 1.09 1.10 1.11 1.12 1.13 1.14 1.15 1.16 1.17 1.18 1.19 1.20 1.21 1.22 1.23 1.24 1.25 1.26 1.27 1.28 1.29 1.30 1.31 1.32 1.33 1.34 1.35 1.36 1.37 1.38 1.39 1.40 1.41 1.42 1.43 1.44 1.45 1.46 1.47 1.48 1.49 1.50 1.51 1.52 1.53 1.54 1.55 1.56 1.57 1.58 1.59 1.60 1.61 1.62 1.63 1.64 1.65 1.66 1.67 1.68 1.69 1.70 1.71 1.72 1.73 1.74 1.75 1.76 1.77 1.78 1.79 1.80 1.81 1.82 1.83 1.84 1.85 1.86 1.87 1.88 1.89 1.90 1.91 1.92 1.93 1.94 1.95 1.96 1.97 1.98 1.99 2.00 2.01 2.02 2.03 2.04 2.05 2.06 2.07 2.08 2.09 2.10 2.11 2.12 2.13 2.14 2.15 2.16 2.17 2.18 2.19 2.20 2.21 2.22 2.23 2.24 2.25 2.26 2.27 2.28 2.29 2.30 2.31 2.32 2.33 2.34 2.35 2.36 2.37 2.38 2.39 2.40 2.41 2.42 2.43 2.44 2.45 2.46 2.47 2.48 2.49 2.50 2.51 2.52 2.53 2.54 2.55 2.56 2.57 2.58 2.59 2.60 2.61 2.62 2.63 2.64 2.65 2.66 2.67 2.68 2.69 2.70 2.71 2.72 2.73 2.74 2.75 2.76 2.77 2.78 2.79 2.80 2.81 2.82 2.83 2.84 2.85 2.86 2.87 2.88 2.89 2.90 2.91 2.92 2.93 2.94 2.95 2.96 2.97 2.98 2.99 3.00]
 #define BLOOM_STRENGTH 1.00 // [0.00 0.01 0.02 0.03 0.04 0.05 0.06 0.07 0.08 0.09 0.10 0.11 0.12 0.13 0.14 0.15 0.16 0.17 0.18 0.19 0.20 0.21 0.22 0.23 0.24 0.25 0.26 0.27 0.28 0.29 0.30 0.31 0.32 0.33 0.34 0.35 0.36 0.37 0.38 0.39 0.40 0.41 0.42 0.43 0.44 0.45 0.46 0.47 0.48 0.49 0.50 0.51 0.52 0.53 0.54 0.55 0.56 0.57 0.58 0.59 0.60 0.61 0.62 0.63 0.64 0.65 0.66 0.67 0.68 0.69 0.70 0.71 0.72 0.73 0.74 0.75 0.76 0.77 0.78 0.79 0.80 0.81 0.82 0.83 0.84 0.85 0.86 0.87 0.88 0.89 0.90 0.91 0.92 0.93 0.94 0.95 0.96 0.97 0.98 0.99 1.00 1.01 1.02 1.03 1.04 1.05 1.06 1.07 1.08 1.09 1.10 1.11 1.12 1.13 1.14 1.15 1.16 1.17 1.18 1.19 1.20 1.21 1.22 1.23 1.24 1.25 1.26 1.27 1.28 1.29 1.30 1.31 1.32 1.33 1.34 1.35 1.36 1.37 1.38 1.39 1.40 1.41 1.42 1.43 1.44 1.45 1.46 1.47 1.48 1.49 1.50 1.51 1.52 1.53 1.54 1.55 1.56 1.57 1.58 1.59 1.60 1.61 1.62 1.63 1.64 1.65 1.66 1.67 1.68 1.69 1.70 1.71 1.72 1.73 1.74 1.75 1.76 1.77 1.78 1.79 1.80 1.81 1.82 1.83 1.84 1.85 1.86 1.87 1.88 1.89 1.90 1.91 1.92 1.93 1.94 1.95 1.96 1.97 1.98 1.99 2.00 2.01 2.02 2.03 2.04 2.05 2.06 2.07 2.08 2.09 2.10 2.11 2.12 2.13 2.14 2.15 2.16 2.17 2.18 2.19 2.20 2.21 2.22 2.23 2.24 2.25 2.26 2.27 2.28 2.29 2.30 2.31 2.32 2.33 2.34 2.35 2.36 2.37 2.38 2.39 2.40 2.41 2.42 2.43 2.44 2.45 2.46 2.47 2.48 2.49 2.50 2.51 2.52 2.53 2.54 2.55 2.56 2.57 2.58 2.59 2.60 2.61 2.62 2.63 2.64 2.65 2.66 2.67 2.68 2.69 2.70 2.71 2.72 2.73 2.74 2.75 2.76 2.77 2.78 2.79 2.80 2.81 2.82 2.83 2.84 2.85 2.86 2.87 2.88 2.89 2.90 2.91 2.92 2.93 2.94 2.95 2.96 2.97 2.98 2.99 3.00]
@@ -174,12 +177,12 @@
 #define LPV_FALLOFF 0.80 // [0.50 0.51 0.52 0.53 0.54 0.55 0.56 0.57 0.58 0.59 0.60 0.61 0.62 0.63 0.64 0.65 0.66 0.67 0.68 0.69 0.70 0.71 0.72 0.73 0.74 0.75 0.76 0.77 0.78 0.79 0.80 0.81 0.82 0.83 0.84 0.85 0.86 0.87 0.88 0.89 0.90 0.91 0.92 0.93 0.94 0.95]
 #define LPV_FOG_STRENGTH 0.50 // [0.00 0.05 0.10 0.15 0.20 0.25 0.30 0.35 0.40 0.45 0.50 0.55 0.60 0.65 0.70 0.75 0.80 0.85 0.90 0.95 1.00 1.05 1.10 1.15 1.20 1.25 1.30 1.35 1.40 1.45 1.50 1.55 1.60 1.65 1.70 1.75 1.80 1.85 1.90 1.95 2.00]
 
-const int   noiseTextureResolution = 256;
-const int   shadowMapResolution = 2048;  // [512 1024 2048 3072 4096 6144 8192]
+const int noiseTextureResolution = 256;
+const int shadowMapResolution = 2048; // [512 1024 2048 3072 4096 6144 8192]
 const float shadowDistance = 128.0; // [48.0 64.0 96.0 128.0 160.0 192.0 256.0 320.0 384.0]
 const float sunPathRotation = -30.0; // [-60.0 -45.0 -30.0 -15.0 0.0 15.0 30.0 45.0 60.0]
 const float shadowDistanceRenderMul = 1.0; // [0.25 0.50 0.75 1.0 1.25 1.50 2.0]
-const float entityShadowDistanceMul = 0.5; // [0.0 0.25 0.50 0.75 1.0]
+const float entityShadowDistanceMul = 0.50; // [0.0 0.25 0.50 0.75 1.0]
 const float ambientOcclusionLevel = 1.0; // [0.0 0.25 0.50 0.75 1.0]
 const float wetnessHalflife = 100.0;
 const float drynessHalflife = 800.0;
@@ -188,6 +191,37 @@ const float drynessHalflife = 800.0;
 #define SUN_BRIGHTNESS 2.8 // [0.0 0.5 1.0 1.5 2.0 2.4 2.8 3.2 4.0 5.0 6.0]
 #define MOON_BRIGHTNESS 0.25 // [0.0 0.05 0.10 0.15 0.20 0.25 0.30 0.40 0.50 0.75 1.0]
 #define SKY_SATURATION 1.0 // [0.0 0.25 0.50 0.75 1.0 1.25 1.50 1.75 2.0]
+
+#define SKY_BRIGHTNESS 1.00 // [0.25 0.50 0.60 0.70 0.80 0.90 1.00 1.10 1.20 1.40 1.60 2.00]
+#define HORIZON_BRIGHTNESS 0.35 // [0.15 0.20 0.25 0.30 0.35 0.45 0.55 0.70 0.85 1.00]
+#define SKY_BLUENESS 0.82 // [0.50 0.55 0.60 0.65 0.70 0.75 0.80 0.82 0.85 0.90 0.95 1.00]
+#define ATMOS_SKY_STEPS 20 // [8 12 16 20 24 32 40]
+#define ATMOS_HAZE 1.60 // [0.00 0.25 0.50 0.75 1.00 1.25 1.60 2.00 2.50 3.00 4.00]
+#define ATMOS_OZONE 1.00 // [0.00 0.25 0.50 0.75 1.00 1.25 1.50 2.00 3.00]
+#define ATMOS_ALTITUDE_SCALE 4.0 // [0.0 1.0 2.0 4.0 8.0 16.0 32.0]
+#define MULTI_SCATTER_STRENGTH 1.00 // [0.00 0.25 0.50 0.75 1.00 1.25 1.50 2.00]
+#define AERIAL_STRENGTH 1.00 // [0.00 0.25 0.50 0.75 1.00 1.25 1.50 2.00 3.00]
+#define AERIAL_BLUENESS 0.20 // [0.00 0.10 0.20 0.30 0.40 0.50 0.60 0.75 0.90 1.00]
+
+//#define CALM_MODE
+#define CALM_STRENGTH 1.00 // [0.10 0.20 0.30 0.40 0.50 0.60 0.70 0.80 0.90 1.00]
+
+#ifdef CALM_MODE
+  #define CALM_TO(neutral, calm) mix(float(neutral), float(calm), CALM_STRENGTH)
+#else
+  #define CALM_TO(neutral, calm) float(neutral)
+#endif
+
+#define CALM_EXPOSURE CALM_TO(1.0, 0.65)
+
+#define CALM_VIBRANCE CALM_TO(1.0, 1.06)
+#define CALM_SATURATION CALM_TO(1.0, 1.10)
+#define CALM_CONTRAST CALM_TO(1.0, 1.04)
+#define CALM_WARMTH CALM_TO(0.0, 0.35)
+#define CALM_BLOOM CALM_TO(1.0, 1.08)
+
+#define CALM_HORIZON CALM_TO(1.0, 0.85)
+#define CALM_HAZE CALM_TO(1.0, 0.90)
 
 #define CLOUD_ALTITUDE 280.0 // [128.0 160.0 192.0 224.0 256.0 280.0 320.0 384.0 448.0 512.0]
 #define CLOUD_THICKNESS 140.0 // [40.0 60.0 80.0 100.0 120.0 140.0 160.0 200.0 240.0 320.0]
@@ -227,7 +261,7 @@ const float drynessHalflife = 800.0;
 
 /* Rain, wetness & puddles (overworld) */
 #define RAIN_PUDDLES
-#define RAIN_PUDDLE_REFLECTIONS 1  //[0 1 2]
+#define RAIN_PUDDLE_REFLECTIONS 1 //[0 1 2]
 #define PUDDLE_AMOUNT 1.00 // [0.00 0.05 0.10 0.15 0.20 0.25 0.30 0.35 0.40 0.45 0.50 0.55 0.60 0.65 0.70 0.75 0.80 0.85 0.90 0.95 1.00 1.05 1.10 1.15 1.20 1.25 1.30 1.35 1.40 1.45 1.50 1.55 1.60 1.65 1.70 1.75 1.80 1.85 1.90 1.95 2.00]
 #define WETNESS_DARKEN 0.70 // [0.40 0.42 0.44 0.46 0.48 0.50 0.52 0.54 0.56 0.58 0.60 0.62 0.64 0.66 0.68 0.70 0.72 0.74 0.76 0.78 0.80 0.82 0.84 0.86 0.88 0.90 0.92 0.94 0.96 0.98 1.00]
 #define RAIN_SLANT 1.00 // [0.00 0.10 0.20 0.30 0.40 0.50 0.60 0.70 0.80 0.90 1.00 1.10 1.20 1.30 1.40 1.50 1.60 1.70 1.80 1.90 2.00]
@@ -256,6 +290,9 @@ const float drynessHalflife = 800.0;
 #define NETHER_LPV_SCALE 2.0 // [0.0 0.25 0.50 0.75 1.0 1.25 1.50 2.0 2.5 3.0 4.0]
 #define NETHER_FALLBACK_SCALE 1.0 // [0.0 0.25 0.50 0.75 1.0 1.25 1.50 2.0 2.5 3.0]
 #define NETHER_PORTAL_BRIGHTNESS 3.8 // [0.0 0.5 1.0 1.5 2.0 2.5 3.0 3.8 4.0 5.0 6.0 8.0]
+#define NETHER_FOG_GLOW 1.50 // [0.00 0.25 0.50 0.75 1.00 1.25 1.50 2.00 2.50 3.00 4.00]
+#define NETHER_VL_DISTANCE 64.0 // [16.0 24.0 32.0 40.0 48.0 64.0 80.0 96.0 128.0]
+#define NETHER_VL_STEPS 16 // [6 8 12 16 24 32]
 //#define DEBUG_LPV
 //#define DEBUG_PBR
 

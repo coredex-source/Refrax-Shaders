@@ -42,7 +42,7 @@ vec3 bloomSample(vec2 coord) {
 vec3 processPixel(vec2 coord, vec3 bloom, float exposure) {
     vec3 hdr = texture(colortex0, coord).rgb;
 #ifdef BLOOM
-    hdr = mix(hdr, bloom, saturate(BLOOM_STRENGTH * 0.12));
+    hdr = mix(hdr, bloom, saturate(BLOOM_STRENGTH * CALM_BLOOM * 0.12));
 #endif
     hdr *= exposure;
     vec3 ldr = applyTonemap(hdr);
@@ -70,7 +70,7 @@ vec3 morphAA(vec2 uv, vec3 color, vec2 px, vec3 bloom, float exposure) {
     float lL = aaLuma(uv + vec2(-px.x, 0.0), bloom, exposure);
     float lR = aaLuma(uv + vec2( px.x, 0.0), bloom, exposure);
     float lU = aaLuma(uv + vec2(0.0, -px.y), bloom, exposure);
-    float lD = aaLuma(uv + vec2(0.0,  px.y), bloom, exposure);
+    float lD = aaLuma(uv + vec2(0.0, px.y), bloom, exposure);
 
     float dH = abs(lR - lL);
     float dV = abs(lD - lU);
@@ -89,7 +89,7 @@ vec3 morphAA(vec2 uv, vec3 color, vec2 px, vec3 bloom, float exposure) {
     }
 
     float total = aaEdgeLength(uv, -along, crossN, refDelta, bloom, exposure)
-                + aaEdgeLength(uv,  along, crossN, refDelta, bloom, exposure);
+                + aaEdgeLength(uv, along, crossN, refDelta, bloom, exposure);
     float coverage = mix(0.2, 0.5, saturate(total / float(SMAA_SEARCH_STEPS)));
 
     vec3 neighbor = processPixel(uv + crossN, bloom, exposure);
@@ -103,7 +103,7 @@ float ataaDepthEdge(vec2 uv, vec2 px) {
     float dL = linearizeDepth(texture(depthtex0, uv + vec2(-px.x, 0.0)).r, near, far);
     float dR = linearizeDepth(texture(depthtex0, uv + vec2( px.x, 0.0)).r, near, far);
     float dU = linearizeDepth(texture(depthtex0, uv + vec2(0.0, -px.y)).r, near, far);
-    float dD = linearizeDepth(texture(depthtex0, uv + vec2(0.0,  px.y)).r, near, far);
+    float dD = linearizeDepth(texture(depthtex0, uv + vec2(0.0, px.y)).r, near, far);
     float dMax = max(max(abs(dC - dL), abs(dC - dR)), max(abs(dC - dU), abs(dC - dD)));
     return dMax / max(dC, 1e-3);
 }
@@ -129,11 +129,13 @@ void main() {
   #endif
 #endif
 
+    exposure *= CALM_EXPOSURE;
+
     vec3 color = processPixel(uv, bloom, exposure);
 
 #if defined FXAA || defined TEMPORAL_AA || SHARPEN_MODE > 0
     vec3 cN = processPixel(uv + vec2(0.0, -px.y), bloom, exposure);
-    vec3 cS = processPixel(uv + vec2(0.0,  px.y), bloom, exposure);
+    vec3 cS = processPixel(uv + vec2(0.0, px.y), bloom, exposure);
     vec3 cE = processPixel(uv + vec2( px.x, 0.0), bloom, exposure);
     vec3 cW = processPixel(uv + vec2(-px.x, 0.0), bloom, exposure);
 #endif
@@ -170,8 +172,8 @@ void main() {
     if (SHARPEN_STRENGTH > 0.0) {
         vec3 cNW = processPixel(uv + vec2(-px.x, -px.y), bloom, exposure);
         vec3 cNE = processPixel(uv + vec2( px.x, -px.y), bloom, exposure);
-        vec3 cSW = processPixel(uv + vec2(-px.x,  px.y), bloom, exposure);
-        vec3 cSE = processPixel(uv + vec2( px.x,  px.y), bloom, exposure);
+        vec3 cSW = processPixel(uv + vec2(-px.x, px.y), bloom, exposure);
+        vec3 cSE = processPixel(uv + vec2( px.x, px.y), bloom, exposure);
         color = casSharpen(cNW, cN, cNE, cW, color, cE, cSW, cS, cSE, SHARPEN_STRENGTH);
     }
 #elif SHARPEN_MODE == 2

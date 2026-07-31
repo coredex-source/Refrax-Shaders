@@ -87,7 +87,7 @@ vec4 volumetricClouds(vec3 camWorld, vec3 dir, vec3 sunDir, float time, float ra
         }
         t += dt;
     }
-    
+
     float fade = 1.0 - saturate(t0 / 7000.0);
     return vec4(scatter * fade, mix(1.0, trans, fade));
 }

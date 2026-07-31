@@ -59,7 +59,7 @@ const vec3 EP_PALETTE[8] = vec3[8](
 #endif
 
 vec3 endPortalColor(vec3 scenePos, vec3 camPos, vec3 N, float time) {
-    
+
     vec3 ref = abs(N.y) > 0.9 ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 1.0, 0.0);
     vec3 T = normalize(cross(ref, N));
     vec3 B = cross(N, T);
@@ -67,9 +67,9 @@ vec3 endPortalColor(vec3 scenePos, vec3 camPos, vec3 N, float time) {
     vec3 worldPos = scenePos + camPos;
     vec2 base = vec2(dot(worldPos, T), dot(worldPos, B));
 
-    vec3 dir = normalize(scenePos);                 
+    vec3 dir = normalize(scenePos);
     float vn = max(abs(dot(dir, N)), 0.2);
-    vec2 par = vec2(dot(dir, T), dot(dir, B)) / vn; 
+    vec2 par = vec2(dot(dir, T), dot(dir, B)) / vn;
 
     vec3 color = EP_BASE;
 

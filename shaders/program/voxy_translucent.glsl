@@ -3,6 +3,7 @@
 #include "/lib/settings.glsl"
 #include "/lib/common.glsl"
 #include "/lib/noise.glsl"
+#define REFRAX_NO_ATMOS_LUT
 #include "/lib/atmosphere.glsl"
 #include "/lib/water.glsl"
 
