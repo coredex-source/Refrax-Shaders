@@ -34,8 +34,8 @@ in vec3 tangentW;
 in float tangentSign;
 in vec3 scenePos;
 flat in int blockId;
-in vec2 tileBase;
-in vec2 tileSize;
+flat in vec2 tileBase;
+flat in vec2 tileSize;
 
 #ifdef HAND
 /* RENDERTARGETS: 1,2,3,10,0 */
@@ -124,13 +124,19 @@ void main() {
         vec3 lightDirW = normalize(mat3(gbufferModelViewInverse) * shadowLightPosition);
         vec3 lightDirT = normalize(transpose(TBN) * lightDirW);
         float pomHeight;
+        vec3 pomSlopeN;
+        float pomSlopeW;
         float pomFade = smoothstep(64.0, 96.0, length(scenePos));
-        texcoord = pomOffset(normals, texcoord, tileBase, tileSize, viewDirT, uvDx, uvDy, pomFade, pomHeight);
+        texcoord = pomOffset(normals, texcoord, tileBase, tileSize, viewDirT, uvDx, uvDy, pomFade, pomHeight, pomSlopeN, pomSlopeW);
         pomShadow = pomDirectShadow(normals, texcoord, tileBase, tileSize, lightDirT, uvDx, uvDy, pomHeight, pomFade);
       #endif
         vec4 nTex = textureGrad(normals, texcoord, uvDx, uvDy);
         if (nTex.r + nTex.g > 0.0005) {
-            N = normalize(TBN * filteredNormalTex(nTex, uvDx, uvDy, vec2(textureSize(normals, 0))));
+            vec3 tanN = filteredNormalTex(nTex, uvDx, uvDy, vec2(textureSize(normals, 0)));
+      #ifdef POM
+            if (pomSlopeW > 0.0) tanN = normalize(mix(tanN, pomSlopeN, pomSlopeW));
+      #endif
+            N = normalize(TBN * tanN);
             texAO = decodeTexAO(nTex);
         }
     }

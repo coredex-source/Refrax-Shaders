@@ -204,11 +204,12 @@ float normalDetailWeight(vec2 normalXY, vec2 dx, vec2 dy, vec2 texturePixels) {
     return 1.0;
 #else
     float footprint = max(length(dx * texturePixels), length(dy * texturePixels));
-    float level = max(log2(max(footprint, 1.0)), 0.0);
     float variation = max(length(dFdx(normalXY)), length(dFdy(normalXY)));
+    float level = max(log2(max(footprint, 1.0)), 0.0);
     float mipWeight = exp2(-level * PBR_NORMAL_FILTER_STRENGTH);
     float signalWeight = 1.0 / (1.0 + variation * PBR_NORMAL_FILTER_STRENGTH * 2.0);
-    return mipWeight * signalWeight;
+    float minification = saturate(footprint - 1.0);
+    return mix(1.0, mipWeight * signalWeight, minification);
 #endif
 }
 
@@ -225,9 +226,18 @@ float materialSpecularRoughness(float roughness, vec3 N) {
 #else
     vec3 nx = dFdx(N);
     vec3 ny = dFdy(N);
-    float variance = min(max(dot(nx, nx), dot(ny, ny)) * PBR_SPECULAR_AA_STRENGTH, 0.36);
+    float variance = min(max(dot(nx, nx), dot(ny, ny)) * PBR_SPECULAR_AA_STRENGTH, 0.12);
     return sqrt(saturate(roughness * roughness + variance));
 #endif
+}
+
+vec3 materialLobeNormal(vec3 geometricNormal, vec3 detailNormal, float roughness, float clearcoat) {
+    float smoothness = saturate(1.0 - sqrt(saturate(roughness)));
+    float detailWeight = smoothstep(0.04, 0.84, smoothness);
+#ifdef CLEARCOAT_MATERIALS
+    detailWeight = max(detailWeight, saturate(clearcoat * CLEARCOAT_STRENGTH) * 0.75);
+#endif
+    return normalize(mix(geometricNormal, detailNormal, mix(0.08, 1.0, detailWeight)));
 }
 
 vec3 compressMaterialHighlight(vec3 highlight) {
@@ -282,11 +292,14 @@ vec2 wrapTile(vec2 uv, vec2 base, vec2 size) {
     return fract((uv - base) / size) * size + base;
 }
 
+const float POM_MAX_RAY = 1.5;
 
 vec2 pomOffset(sampler2D normalsTex, vec2 uv, vec2 base, vec2 size,
                vec3 viewDirTangent, vec2 dx, vec2 dy, float distanceFade,
-               out float surfaceHeight) {
+               out float surfaceHeight, out vec3 slopeNormalT, out float slopeWeight) {
     surfaceHeight = 1.0;
+    slopeNormalT = vec3(0.0, 0.0, 1.0);
+    slopeWeight = 0.0;
 #ifndef POM
     return uv;
 #else
@@ -295,17 +308,21 @@ vec2 pomOffset(sampler2D normalsTex, vec2 uv, vec2 base, vec2 size,
 
     vec4 first = textureGrad(normalsTex, wrapTile(uv, base, size), dx, dy);
     if (first.r + first.g <= 0.0005 || first.a >= (254.0 / 255.0)) return uv;
+    if (distanceFade >= 0.999) return uv;
 
-    float grazingFade = smoothstep(0.035, 0.16, viewZ);
-    if (grazingFade <= 0.0) return uv;
+    vec2 fullRay = -viewDirTangent.xy / viewZ * (POM_DEPTH * (1.0 - distanceFade));
+    float fullLength = length(fullRay);
+    float depthRange = fullLength > POM_MAX_RAY ? POM_MAX_RAY / fullLength : 1.0;
+    vec2 rayOffset = fullRay * depthRange;
 
+    vec2 atlasPixels = vec2(textureSize(normalsTex, 0));
+    float footprint = max(max(length(dx * atlasPixels), length(dy * atlasPixels)), 1.0);
+    float rayTexels = length(rayOffset * size * atlasPixels);
+    const int maxLayers = POM_SAMPLES * 3;
+    int layerCount = clamp(int(ceil(rayTexels * 3.0 / footprint)), POM_SAMPLES, maxLayers);
+    float layerStep = depthRange / float(layerCount);
+    vec2 uvStep = rayOffset / float(layerCount);
     vec2 localUV = (uv - base) / size;
-    vec2 rayOffset = -viewDirTangent.xy / viewZ * (POM_DEPTH * grazingFade * (1.0 - distanceFade));
-    float offsetLength = length(rayOffset);
-    if (offsetLength > 0.85) rayOffset *= 0.85 / offsetLength;
-
-    float layerStep = 1.0 / float(POM_SAMPLES);
-    vec2 uvStep = rayOffset * layerStep;
     vec2 previousUV = localUV;
     float previousRayDepth = 0.0;
     float previousMapDepth = 1.0 - first.a;
@@ -315,7 +332,8 @@ vec2 pomOffset(sampler2D normalsTex, vec2 uv, vec2 base, vec2 size,
     float currentMapDepth = previousMapDepth;
     bool hitSurface = false;
 
-    for (int i = 0; i < POM_SAMPLES; i++) {
+    for (int i = 0; i < maxLayers; i++) {
+        if (i >= layerCount) break;
         currentUV += uvStep;
         currentRayDepth += layerStep;
         float height = textureGrad(normalsTex, wrapTile(base + currentUV * size, base, size), dx, dy).a;
@@ -331,9 +349,14 @@ vec2 pomOffset(sampler2D normalsTex, vec2 uv, vec2 base, vec2 size,
         previousMapDepth = currentMapDepth;
     }
 
-    if (!hitSurface) return uv;
+    float wallGap = currentRayDepth - currentMapDepth;
 
-    for (int i = 0; i < 5; i++) {
+    if (!hitSurface) {
+        surfaceHeight = 1.0 - currentRayDepth;
+        return base + fract(currentUV) * size;
+    }
+
+    for (int i = 0; i < 8; i++) {
         vec2 midUV = (previousUV + currentUV) * 0.5;
         float midRayDepth = (previousRayDepth + currentRayDepth) * 0.5;
         float midHeight = textureGrad(normalsTex, wrapTile(base + midUV * size, base, size), dx, dy).a;
@@ -354,6 +377,11 @@ vec2 pomOffset(sampler2D normalsTex, vec2 uv, vec2 base, vec2 size,
     float intersection = before / max(before + after, 1e-5);
     vec2 hitUV = mix(previousUV, currentUV, intersection);
     surfaceHeight = 1.0 - mix(previousRayDepth, currentRayDepth, intersection);
+
+    if (wallGap > max(layerStep * 2.0, 0.05)) {
+        slopeNormalT = vec3(0.0, 0.0, 1.0);
+        slopeWeight = 0.6 * saturate(1.0 - distanceFade * 2.0);
+    }
     return base + fract(hitUV) * size;
 #endif
 }
@@ -367,28 +395,20 @@ float pomDirectShadow(sampler2D normalsTex, vec2 uv, vec2 base, vec2 size,
 #ifndef POM_SELF_SHADOWS
     return 1.0;
 #else
-    if (lightDirTangent.z <= 0.02 || surfaceHeight >= 0.995) return 1.0;
-    float rayDepth = 1.0 - surfaceHeight;
-    float rayStep = rayDepth / float(POM_SHADOW_SAMPLES);
+    float lightZ = lightDirTangent.z;
+    if (lightZ <= 0.0 || surfaceHeight >= 0.995 || distanceFade >= 0.999) return 1.0;
+    vec2 lateral = lightDirTangent.xy * (POM_DEPTH * 4.0);
     vec2 localUV = (uv - base) / size;
-    vec2 uvStep = lightDirTangent.xy / lightDirTangent.z * (POM_DEPTH * rayStep);
-    float strongestBlocker = 0.0;
-    float blockerSum = 0.0;
-    float sampleCount = 0.0;
+    float shadow = 1.0;
     for (int i = 0; i < POM_SHADOW_SAMPLES; i++) {
-        localUV += uvStep;
-        rayDepth -= rayStep;
-        if (rayDepth <= 0.0) break;
-        float mapDepth = 1.0 - textureGrad(normalsTex, wrapTile(base + localUV * size, base, size), dx, dy).a;
-        float blocker = smoothstep(0.008, 0.065, rayDepth - mapDepth);
-        strongestBlocker = max(strongestBlocker, blocker);
-        blockerSum += blocker;
-        sampleCount += 1.0;
+        if (shadow < 0.01) break;
+        float t = 0.1 * (float(i) + 0.5) / float(POM_SHADOW_SAMPLES);
+        float mapHeight = textureGrad(normalsTex, wrapTile(base + (localUV + lateral * t) * size, base, size), dx, dy).a;
+        float rayHeight = surfaceHeight + lightZ * t;
+        shadow *= saturate(1.0 - (mapHeight - rayHeight) * 4.0);
     }
-    float averageBlocker = blockerSum / max(sampleCount, 1.0);
-    float occlusion = mix(averageBlocker, strongestBlocker, 0.60);
-    float visibility = 1.0 - smoothstep(0.03, 0.70, occlusion) * POM_SHADOW_STRENGTH;
-    return mix(visibility, 1.0, distanceFade);
+    float visibility = mix(1.0, shadow, POM_SHADOW_STRENGTH);
+    return mix(1.0, visibility, 1.0 - distanceFade);
 #endif
 #endif
 }

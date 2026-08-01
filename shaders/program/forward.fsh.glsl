@@ -71,8 +71,8 @@ in vec3 tangentW;
 in float tangentSign;
 in vec3 scenePos;
 flat in int blockId;
-in vec2 tileBase;
-in vec2 tileSize;
+flat in vec2 tileBase;
+flat in vec2 tileSize;
 
 #if defined WATER || defined HAND
 /* RENDERTARGETS: 0,2 */
@@ -154,6 +154,8 @@ void main() {
         albedo.a = 1.0;
     }
     float pomShadow = 1.0;
+    vec3 pomSlopeN = vec3(0.0, 0.0, 1.0);
+    float pomSlopeW = 0.0;
 #if defined HAND && defined PBR_MATERIALS && defined POM
     if (!cutoutFoliage && dot(tangentW, tangentW) > 1e-6) {
         mat3 handTBN = makeTBN(normalize(normalW), tangentW, tangentSign);
@@ -161,7 +163,7 @@ void main() {
         vec3 lightDirW = normalize(mat3(gbufferModelViewInverse) * shadowLightPosition);
         vec3 lightDirT = normalize(transpose(handTBN) * lightDirW);
         float pomHeight;
-        texcoord = pomOffset(normals, texcoord, tileBase, tileSize, viewDirT, uvDx, uvDy, 0.0, pomHeight);
+        texcoord = pomOffset(normals, texcoord, tileBase, tileSize, viewDirT, uvDx, uvDy, 0.0, pomHeight, pomSlopeN, pomSlopeW);
         pomShadow = pomDirectShadow(normals, texcoord, tileBase, tileSize, lightDirT, uvDx, uvDy, pomHeight, 0.0);
         albedo = textureGrad(gtexture, texcoord, uvDx, uvDy) * vcolor;
     }
@@ -223,7 +225,11 @@ void main() {
         mat3 TBN = makeTBN(N, tangentW, tangentSign);
         vec4 nTex = textureGrad(normals, texcoord, uvDx, uvDy);
         if (nTex.r + nTex.g > 0.0005) {
-            N = normalize(TBN * filteredNormalTex(nTex, uvDx, uvDy, vec2(textureSize(normals, 0))));
+            vec3 tanN = filteredNormalTex(nTex, uvDx, uvDy, vec2(textureSize(normals, 0)));
+  #if defined HAND && defined POM
+            if (pomSlopeW > 0.0) tanN = normalize(mix(tanN, pomSlopeN, pomSlopeW));
+  #endif
+            N = normalize(TBN * tanN);
             float decodedAO = decodeTexAO(nTex);
             materialAO = mix(decodedAO, decodedAO * decodedAO, PBR_AO_DEPTH);
         }

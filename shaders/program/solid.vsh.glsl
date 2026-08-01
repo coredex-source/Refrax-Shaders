@@ -25,8 +25,8 @@ out vec3 tangentW;
 out float tangentSign;
 out vec3 scenePos;
 flat out int blockId;
-out vec2 tileBase;
-out vec2 tileSize;
+flat out vec2 tileBase;
+flat out vec2 tileSize;
 
 void main() {
     uv = vec2(gl_TextureMatrix[0] * gl_MultiTexCoord0);

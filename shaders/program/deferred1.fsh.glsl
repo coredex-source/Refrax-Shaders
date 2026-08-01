@@ -331,16 +331,17 @@ void main() {
 #if defined PBR_MATERIALS || REFLECTION_MODE > 0
     vec3 V = -dirW;
     float smoothness = saturate(1.0 - sqrt(saturate(roughness)));
+    vec3 lobeN = materialLobeNormal(geomNW, N, roughness, clearcoat);
     vec3 f0 = matteFoliage ? vec3(0.0) : materialF0(f0raw, albedo);
     float directSpecWeight = metal ? 1.0 : mix(0.08, 0.60, smoothstep(0.10, 0.85, smoothness));
     directSpecWeight = max(directSpecWeight, clearcoat * 0.35);
     if (!matteFoliage && directSpecWeight > 0.0) {
-        vec3 directSpecular = materialDiscLightSpecular(N, V, lightDir, SUN_GLINT_RADIUS, roughness, f0, anisotropy, clearcoat, thinFilm) * lightCol * directShadow * directSpecWeight * PBR_GLINT_STRENGTH;
+        vec3 directSpecular = materialDiscLightSpecular(lobeN, V, lightDir, SUN_GLINT_RADIUS, roughness, f0, anisotropy, clearcoat, thinFilm) * lightCol * directShadow * directSpecWeight * PBR_GLINT_STRENGTH;
         color += compressMaterialHighlight(directSpecular);
     }
 
   #if REFLECTION_MODE > 0
-    float NoV = saturate(dot(V, N));
+    float NoV = saturate(dot(V, lobeN));
     float reflectionRoughness = materialReflectionRoughness(roughness, clearcoat);
     vec3 F = matteFoliage ? vec3(0.0) : materialReflectionFresnel(NoV, f0raw, albedo, clearcoat, thinFilm);
     float reflWeight = metal ? mix(0.45, 1.0, 1.0 - saturate(reflectionRoughness))
@@ -348,7 +349,7 @@ void main() {
     bool envReflect = !matteFoliage && reflWeight > 0.002;
     bool ssrReflect = envReflect && (metal || reflectionRoughness < SSR_ROUGH_LIMIT);
     if (envReflect) {
-        vec3 reflDirW = reflect(dirW, N);
+        vec3 reflDirW = reflect(dirW, lobeN);
     #if defined WORLD_NETHER || defined WORLD_END
         float skyVis = 1.0;
     #else
@@ -357,7 +358,7 @@ void main() {
         vec3 refl = dimensionSkyReflection(reflDirW, sunDir, fogColor, frameTimeCounter, rainStrength) * skyVis;
         if (ssrReflect) {
         #ifdef SSR_ACCUM_ACTIVE
-            reflDirW = ssrLobeDir(reflDirW, N, reflectionRoughness, ssrLobeRandom(noisetex, gl_FragCoord.xy, frameCounter));
+            reflDirW = ssrLobeDir(reflDirW, lobeN, reflectionRoughness, ssrLobeRandom(noisetex, gl_FragCoord.xy, frameCounter));
         #endif
             refl = ssrReflection(viewPos, reflDirW, refl, dither, ssrJitter, viewTexel);
         #ifdef SSR_ACCUM_ACTIVE
