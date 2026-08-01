@@ -116,7 +116,9 @@ vec3 heldLightAt(vec3 pos, int id1, int lv1, int id2, int lv2) {
 #endif
 }
 
-bool isTintedGlass(int id) { return id >= 10070 && id <= 10085; }
+bool isTintedGlass(int id) {
+    return id >= 10070 && id <= 10085;
+}
 
 vec3 glassTint(int id) {
     if (id == 10070) return vec3(0.95, 0.95, 0.95);
@@ -137,7 +139,9 @@ vec3 glassTint(int id) {
     return vec3(0.16, 0.16, 0.16);
 }
 
-bool isNoOcclude(int id) { return id >= 10050; }
+bool isNoOcclude(int id) {
+    return (id >= 10050 && id <= 10059) || id == 10060 || id == 10061 || isTintedGlass(id) || id == 10091;
+}
 bool isFoliage(int id) { return id >= 10050 && id <= 10059; }
 bool isWavingShort(int id) { return id == 10050; }
 bool isWavingLeaf(int id) { return id == 10051; }

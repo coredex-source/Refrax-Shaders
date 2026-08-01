@@ -196,9 +196,13 @@ void main() {
     float roughness = c3.z;
     float f0raw = c3.w;
     float ao = texture(colortex6, fsrRegionUV(uv, viewTexel)).r;
-    vec2 extra = texture(colortex10, uv).rg;
+    vec4 extra = texture(colortex10, uv);
     float sss = extra.r;
     float porosity = extra.g;
+    float anisotropy = extra.b;
+    vec2 coating = unpackCoating(extra.a);
+    float clearcoat = coating.x;
+    float thinFilm = coating.y;
     float dither = ignAnim(gl_FragCoord.xy, frameCounter);
     vec2 ssrJitter = taaJitterUV(vec2(viewWidth, viewHeight), frameCounter);
 
@@ -222,6 +226,9 @@ void main() {
                 if (snowCover > 0.5) f0raw = 0.045;
                 N = normalize(mix(N, normalize(mix(geomNW, vec3(0.0, 1.0, 0.0), 0.8)), snowCover * 0.85));
                 sss = max(sss, snowCover * 0.30);
+                anisotropy *= 1.0 - snowCover;
+                clearcoat *= 1.0 - snowCover;
+                thinFilm *= 1.0 - snowCover;
             }
         }
     }
@@ -296,6 +303,7 @@ void main() {
 #if defined PBR_MATERIALS || REFLECTION_MODE > 0
     bool matteFoliage = isMatteFoliageMaterial(roughness, f0raw);
     bool metal = !matteFoliage && isMetal(f0raw);
+    roughness = materialSpecularRoughness(roughness, N);
     if (metal) {
       #if REFLECTION_MODE > 0
         diffuse = vec3(0.0);
@@ -325,16 +333,20 @@ void main() {
     float smoothness = saturate(1.0 - sqrt(saturate(roughness)));
     vec3 f0 = matteFoliage ? vec3(0.0) : materialF0(f0raw, albedo);
     float directSpecWeight = metal ? 1.0 : mix(0.08, 0.60, smoothstep(0.10, 0.85, smoothness));
-    if (!matteFoliage && directSpecWeight > 0.0)
-        color += discLightSpecular(N, V, lightDir, SUN_GLINT_RADIUS, roughness, f0) * lightCol * directShadow * directSpecWeight * PBR_GLINT_STRENGTH;
+    directSpecWeight = max(directSpecWeight, clearcoat * 0.35);
+    if (!matteFoliage && directSpecWeight > 0.0) {
+        vec3 directSpecular = materialDiscLightSpecular(N, V, lightDir, SUN_GLINT_RADIUS, roughness, f0, anisotropy, clearcoat, thinFilm) * lightCol * directShadow * directSpecWeight * PBR_GLINT_STRENGTH;
+        color += compressMaterialHighlight(directSpecular);
+    }
 
   #if REFLECTION_MODE > 0
     float NoV = saturate(dot(V, N));
-    vec3 F = matteFoliage ? vec3(0.0) : materialFresnel(NoV, f0raw, albedo);
-    float reflWeight = metal ? mix(0.45, 1.0, 1.0 - saturate(roughness))
-                             : pow(1.0 - saturate(roughness), 2.0);
+    float reflectionRoughness = materialReflectionRoughness(roughness, clearcoat);
+    vec3 F = matteFoliage ? vec3(0.0) : materialReflectionFresnel(NoV, f0raw, albedo, clearcoat, thinFilm);
+    float reflWeight = metal ? mix(0.45, 1.0, 1.0 - saturate(reflectionRoughness))
+                             : pow(1.0 - saturate(reflectionRoughness), 2.0);
     bool envReflect = !matteFoliage && reflWeight > 0.002;
-    bool ssrReflect = envReflect && (metal || roughness < SSR_ROUGH_LIMIT);
+    bool ssrReflect = envReflect && (metal || reflectionRoughness < SSR_ROUGH_LIMIT);
     if (envReflect) {
         vec3 reflDirW = reflect(dirW, N);
     #if defined WORLD_NETHER || defined WORLD_END
@@ -345,7 +357,7 @@ void main() {
         vec3 refl = dimensionSkyReflection(reflDirW, sunDir, fogColor, frameTimeCounter, rainStrength) * skyVis;
         if (ssrReflect) {
         #ifdef SSR_ACCUM_ACTIVE
-            reflDirW = ssrLobeDir(reflDirW, N, roughness, ssrLobeRandom(noisetex, gl_FragCoord.xy, frameCounter));
+            reflDirW = ssrLobeDir(reflDirW, N, reflectionRoughness, ssrLobeRandom(noisetex, gl_FragCoord.xy, frameCounter));
         #endif
             refl = ssrReflection(viewPos, reflDirW, refl, dither, ssrJitter, viewTexel);
         #ifdef SSR_ACCUM_ACTIVE

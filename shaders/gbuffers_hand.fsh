@@ -1,3 +1,4 @@
 #version 400 compatibility
 #define HAND
-#include "/program/solid.fsh.glsl"
+#define HAND_OPAQUE
+#include "/program/forward.fsh.glsl"

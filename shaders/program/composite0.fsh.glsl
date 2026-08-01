@@ -24,7 +24,7 @@ const int colortex5Format = RGBA16F;
 const int colortex6Format = R8;
 const int colortex8Format = RGBA16F;
 const int colortex9Format = RGBA16F;
-const int colortex10Format = RG8;
+const int colortex10Format = RGBA8;
 const int colortex11Format = R8;
 const int colortex12Format = R16F;
 const int colortex13Format = RGBA16F;
@@ -131,29 +131,6 @@ void main() {
         lodDepth0 = texture(lodDepthTex0, suv).r;
 #endif
     }
-#ifdef TRANSLUCENT_DEPTH
-    else if (waterData.a > 1.3 && waterData.a < 1.8 && depth1 > depth0) {
-        vec3 frontView = screenToView(vec3(uv, depth0), gbufferProjectionInverse);
-        vec3 backView = screenToView(vec3(uv, depth1), gbufferProjectionInverse);
-        float slab = min(length(backView) - length(frontView), 1.0);
-        if (slab > 0.02) {
-            vec3 nView = normalize(transpose(mat3(gbufferModelViewInverse)) * normalize(waterData.rgb));
-            vec3 incident = normalize(frontView);
-            nView = faceforward(nView, incident, nView);
-            vec3 bent = refract(incident, nView, 1.0 / GLASS_IOR);
-            if (dot(bent, bent) > 0.0) {
-                vec2 offset = viewToScreen(frontView + bent * slab, gbufferProjection).xy - uv;
-                vec2 ruv = uv + offset * GLASS_REFRACTION;
-                if (clamp(ruv, vec2(0.001), vec2(0.999)) == ruv && texture(depthtex1, ruv).r > depth0)
-                    suv = ruv;
-            }
-        }
-        depth0 = texture(depthtex0, suv).r;
-  #ifdef LOD_ACTIVE
-        lodDepth0 = texture(lodDepthTex0, suv).r;
-  #endif
-    }
-#endif
     if (isEyeInWater == 1) {
         float eyeSkyPre = float(eyeBrightnessSmooth.y) / 240.0;
 

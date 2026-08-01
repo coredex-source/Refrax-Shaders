@@ -40,18 +40,29 @@ void voxy_emitFragment(VoxyFragmentParameters p) {
 #endif
 
     float emission = 0.0;
-    float roughness = 0.9;
-    float f0 = 0.04;
+    Material mat;
+    mat.roughness = 0.9;
+    mat.f0 = 0.04;
+    mat.emission = 0.0;
+    mat.sss = 0.0;
+    mat.porosity = 0.0;
+    mat.anisotropy = 0.0;
+    mat.clearcoat = 0.0;
+    mat.thinFilm = 0.0;
     if (id == 10008) {
         emission = 0.85;
     } else if (isEmitter(id)) {
         emission = emitterEmission(id, luminance(albedo));
     } else if (isFoliage(id)) {
-        roughness = 1.0;
-        f0 = MATTE_FOLIAGE_F0;
+        mat.roughness = 1.0;
+        mat.f0 = MATTE_FOLIAGE_F0;
+    } else {
+        applyFallbackMaterial(id, mat);
     }
+    if (emission <= 0.0 && id == 0)
+        emission = inferredEmission(albedo, lm.x);
 
     outAlbedo = vec4(saturate(albedo), 1.0);
     outNormal = vec4(N, emission);
-    outMaterial = vec4(lm, roughness, f0);
+    outMaterial = vec4(lm, mat.roughness, mat.f0);
 }

@@ -12,6 +12,10 @@ uniform sampler2D gtexture;
 uniform sampler2D normals;
 uniform sampler2D specular;
 uniform float alphaTestRef;
+#ifdef POM
+uniform mat4 gbufferModelViewInverse;
+uniform vec3 shadowLightPosition;
+#endif
 #ifdef ENTITY
 uniform vec4 entityColor;
 uniform int entityId;
@@ -50,6 +54,8 @@ void main() {
 #ifdef HAND
     outForwardClear = vec4(0.0, 0.0, 0.0, 1.0);
 #endif
+    vec2 uvDx = dFdx(uv);
+    vec2 uvDy = dFdy(uv);
     vec2 texcoord = uv;
     vec3 N = normalize(normalW);
 
@@ -72,7 +78,7 @@ void main() {
 #if defined ENTITY || defined HAND || defined EMISSIVE_FULL || defined BLOCK_ENTITY
     alphaRef = max(alphaRef, 0.5);
 #endif
-    float baseAlpha = texture(gtexture, uv).a * vcolor.a;
+    float baseAlpha = textureGrad(gtexture, uv, uvDx, uvDy).a * vcolor.a;
     bool terrainFoliage = false;
     bool alphaCutoutTile = false;
 #ifdef TERRAIN
@@ -96,7 +102,14 @@ void main() {
     float texAO = 1.0;
     float pomShadow = 1.0;
     Material mat;
-    mat.roughness = 0.9; mat.f0 = 0.04; mat.emission = 0.0; mat.sss = 0.0; mat.porosity = 0.0;
+    mat.roughness = 0.9;
+    mat.f0 = 0.04;
+    mat.emission = 0.0;
+    mat.sss = 0.0;
+    mat.porosity = 0.0;
+    mat.anisotropy = 0.0;
+    mat.clearcoat = 0.0;
+    mat.thinFilm = 0.0;
 
 #ifdef PBR_MATERIALS
   #ifdef TERRAIN
@@ -108,27 +121,28 @@ void main() {
         mat3 TBN = makeTBN(N, tangentW, tangentSign);
       #ifdef POM
         vec3 viewDirT = normalize(transpose(TBN) * -normalize(scenePos));
+        vec3 lightDirW = normalize(mat3(gbufferModelViewInverse) * shadowLightPosition);
+        vec3 lightDirT = normalize(transpose(TBN) * lightDirW);
         float pomHeight;
-        texcoord = pomOffset(normals, texcoord, tileBase, tileSize, viewDirT, dFdx(uv), dFdy(uv), pomHeight);
-        texcoord = wrapTile(texcoord, tileBase, tileSize);
         float pomFade = smoothstep(64.0, 96.0, length(scenePos));
-        pomShadow = pomDirectShadow(pomHeight, pomFade);
+        texcoord = pomOffset(normals, texcoord, tileBase, tileSize, viewDirT, uvDx, uvDy, pomFade, pomHeight);
+        pomShadow = pomDirectShadow(normals, texcoord, tileBase, tileSize, lightDirT, uvDx, uvDy, pomHeight, pomFade);
       #endif
-        vec4 nTex = texture(normals, texcoord);
+        vec4 nTex = textureGrad(normals, texcoord, uvDx, uvDy);
         if (nTex.r + nTex.g > 0.0005) {
-            N = normalize(TBN * decodeNormalTex(nTex));
+            N = normalize(TBN * filteredNormalTex(nTex, uvDx, uvDy, vec2(textureSize(normals, 0))));
             texAO = decodeTexAO(nTex);
         }
     }
-    if (!foliage) mat = decodeSpecular(texture(specular, texcoord));
+    if (!foliage) mat = decodeSpecular(textureGrad(specular, texcoord, uvDx, uvDy));
 #endif
 
-    vec4 albedo = texture(gtexture, texcoord) * vcolor;
+    vec4 albedo = textureGrad(gtexture, texcoord, uvDx, uvDy) * vcolor;
 #ifdef ENTITY
     albedo.rgb = mix(albedo.rgb, entityColor.rgb, entityColor.a);
 #endif
     if (albedo.a < alphaRef) discard;
-    albedo.rgb *= texAO;
+    albedo.rgb *= mix(texAO, texAO * texAO, PBR_AO_DEPTH);
 
     float emission = mat.emission;
 #ifdef EMISSIVE_FULL
@@ -152,18 +166,15 @@ void main() {
     if (isFoliage(blockId) && mat.sss <= 0.0) mat.sss = FOLIAGE_SSS;
     if (emission <= 0.0 && isEmitter(blockId))
         emission = emitterEmission(blockId, luminance(albedo.rgb));
-    if (mat.roughness > 0.85) {
-        if (blockId == 10040) { mat.roughness = 0.28; mat.f0 = 0.045; }
-        else if (blockId == 10041) { mat.roughness = 0.12; mat.f0 = 0.055; }
-        else if (blockId == 10042) { mat.roughness = 0.22; mat.f0 = 1.0; }
-        else if (blockId == 10043) { mat.roughness = 0.15; mat.f0 = 0.060; }
-    }
+    if (emission <= 0.0 && blockId == 0)
+        emission = inferredEmission(albedo.rgb, lmcoord.x);
+    applyFallbackMaterial(blockId, mat);
 #endif
 
 #ifdef DEBUG_PBR
 #ifdef PBR_MATERIALS
-    vec4 dbgN = texture(normals, texcoord);
-    vec4 dbgS = texture(specular, texcoord);
+    vec4 dbgN = textureGrad(normals, texcoord, uvDx, uvDy);
+    vec4 dbgS = textureGrad(specular, texcoord, uvDx, uvDy);
     outAlbedo = vec4(fract(scenePos.x / 8.0) < 0.5 ? dbgN.rgb : dbgS.rgb, 1.0);
     outNormal = vec4(normalize(normalW), 1.0);
     outMaterial = vec4(lmcoord, 1.0, 0.0);
@@ -175,5 +186,5 @@ void main() {
     outAlbedo = vec4(albedo.rgb, pomShadow);
     outNormal = vec4(N, emission);
     outMaterial = vec4(lmcoord, mat.roughness, mat.f0);
-    outExtra = vec4(mat.sss, mat.porosity, 0.0, 0.0);
+    outExtra = vec4(mat.sss, mat.porosity, mat.anisotropy, packCoating(mat.clearcoat, mat.thinFilm));
 }

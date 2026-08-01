@@ -11,6 +11,9 @@ struct Material {
     float emission;
     float sss;
     float porosity;
+    float anisotropy;
+    float clearcoat;
+    float thinFilm;
 };
 
 const float MATTE_FOLIAGE_F0 = 1.0 / 255.0;
@@ -85,14 +88,151 @@ Material decodeSpecular(vec4 s) {
     m.emission = s.a * 255.0 < 254.5 ? s.a * (255.0 / 254.0) : 0.0;
     m.sss = s.b > (65.0 / 255.0) ? (s.b - 65.0 / 255.0) / (190.0 / 255.0) : 0.0;
     m.porosity = s.b < (65.0 / 255.0) ? s.b * (255.0 / 64.0) : 0.0;
+    m.anisotropy = 0.0;
+    m.clearcoat = 0.0;
+    m.thinFilm = 0.0;
     return m;
+}
+
+void applyFallbackMaterial(int id, inout Material m) {
+    if (m.roughness <= 0.85) return;
+    if (id == 10040) {
+        m.roughness = 0.28;
+        m.f0 = 0.045;
+        m.clearcoat = 0.12;
+    } else if (id == 10041) {
+        m.roughness = 0.12;
+        m.f0 = 0.055;
+        m.clearcoat = 0.65;
+    } else if (id == 10042 || id == 10060) {
+        m.roughness = 0.22;
+        m.f0 = 1.0;
+        m.anisotropy = 0.35;
+    } else if (id == 10043) {
+        m.roughness = 0.15;
+        m.f0 = 0.060;
+        m.clearcoat = 0.55;
+        m.thinFilm = 0.65;
+    } else if (id == 10044) {
+        m.roughness = 0.68;
+        m.f0 = 0.035;
+        m.porosity = 0.55;
+    } else if (id == 10045) {
+        m.roughness = 0.95;
+        m.f0 = 0.025;
+        m.porosity = 0.90;
+    } else if (id == 10046) {
+        m.roughness = 0.82;
+        m.f0 = 0.040;
+        m.porosity = 0.72;
+    } else if (id == 10047) {
+        m.roughness = 0.78;
+        m.f0 = 0.040;
+        m.porosity = 0.65;
+    } else if (id == 10048) {
+        m.roughness = 0.20;
+        m.f0 = 0.045;
+        m.clearcoat = 0.70;
+    } else if (id == 10049) {
+        m.roughness = 0.16;
+        m.f0 = 1.0;
+        m.anisotropy = 0.24;
+    } else if (id == 10086) {
+        m.roughness = 0.24;
+        m.f0 = 1.0;
+        m.anisotropy = 0.30;
+    } else if (id == 10087) {
+        m.roughness = 0.34;
+        m.f0 = 1.0;
+        m.anisotropy = 0.22;
+    } else if (id == 10088) {
+        m.roughness = 0.48;
+        m.f0 = 1.0;
+        m.anisotropy = 0.12;
+    } else if (id == 10089) {
+        m.roughness = 0.70;
+        m.f0 = 0.055;
+        m.porosity = 0.30;
+    } else if (id == 10090) {
+        m.roughness = 0.24;
+        m.f0 = 0.055;
+        m.clearcoat = 0.40;
+        m.thinFilm = 0.85;
+    } else if (id == 10091 || (id >= 10070 && id <= 10085)) {
+        m.roughness = 0.08;
+        m.f0 = 0.040;
+        m.clearcoat = 0.80;
+    }
+}
+
+float inferredEmission(vec3 albedo, float blockLight) {
+#ifndef EMISSIVE_INFERENCE
+    return 0.0;
+#else
+    float hi = max(albedo.r, max(albedo.g, albedo.b));
+    float lo = min(albedo.r, min(albedo.g, albedo.b));
+    float saturation = (hi - lo) / max(hi, 1e-4);
+    float bright = smoothstep(0.58, 0.92, luminance(albedo));
+    float chroma = smoothstep(0.22, 0.62, saturation);
+    float lit = smoothstep(0.72, 0.98, blockLight);
+    return bright * chroma * lit * EMISSIVE_INFERENCE_STRENGTH;
+#endif
+}
+
+float packCoating(float clearcoat, float thinFilm) {
+    float coat = floor(saturate(clearcoat) * 15.0 + 0.5);
+    float film = floor(saturate(thinFilm) * 15.0 + 0.5);
+    return (coat + film * 16.0) / 255.0;
+}
+
+vec2 unpackCoating(float encoded) {
+    float value = floor(saturate(encoded) * 255.0 + 0.5);
+    return vec2(mod(value, 16.0), floor(value / 16.0)) / 15.0;
 }
 
 vec3 decodeNormalTex(vec4 n) {
     vec3 t;
     t.xy = n.rg * 2.0 - 1.0;
-    t.z = sqrt(saturate(1.0 - dot(t.xy, t.xy)));
+    float lengthSquared = dot(t.xy, t.xy);
+    if (lengthSquared > 1.0) t.xy *= inversesqrt(lengthSquared);
+    t.z = sqrt(max(1.0 - dot(t.xy, t.xy), 0.0));
     return t;
+}
+
+float normalDetailWeight(vec2 normalXY, vec2 dx, vec2 dy, vec2 texturePixels) {
+#ifndef PBR_NORMAL_FILTERING
+    return 1.0;
+#else
+    float footprint = max(length(dx * texturePixels), length(dy * texturePixels));
+    float level = max(log2(max(footprint, 1.0)), 0.0);
+    float variation = max(length(dFdx(normalXY)), length(dFdy(normalXY)));
+    float mipWeight = exp2(-level * PBR_NORMAL_FILTER_STRENGTH);
+    float signalWeight = 1.0 / (1.0 + variation * PBR_NORMAL_FILTER_STRENGTH * 2.0);
+    return mipWeight * signalWeight;
+#endif
+}
+
+vec3 filteredNormalTex(vec4 n, vec2 dx, vec2 dy, vec2 texturePixels) {
+    vec3 t = decodeNormalTex(n);
+    t.xy *= normalDetailWeight(t.xy, dx, dy, texturePixels);
+    t.z = sqrt(max(1.0 - dot(t.xy, t.xy), 0.0));
+    return t;
+}
+
+float materialSpecularRoughness(float roughness, vec3 N) {
+#ifndef PBR_SPECULAR_AA
+    return roughness;
+#else
+    vec3 nx = dFdx(N);
+    vec3 ny = dFdy(N);
+    float variance = min(max(dot(nx, nx), dot(ny, ny)) * PBR_SPECULAR_AA_STRENGTH, 0.36);
+    return sqrt(saturate(roughness * roughness + variance));
+#endif
+}
+
+vec3 compressMaterialHighlight(vec3 highlight) {
+    float peak = max(highlight.r, max(highlight.g, highlight.b));
+    return highlight / (1.0 + peak * PBR_HIGHLIGHT_COMPRESSION);
 }
 float decodeTexAO(vec4 n) { return n.b; }
 
@@ -144,7 +284,8 @@ vec2 wrapTile(vec2 uv, vec2 base, vec2 size) {
 
 
 vec2 pomOffset(sampler2D normalsTex, vec2 uv, vec2 base, vec2 size,
-               vec3 viewDirTangent, vec2 dx, vec2 dy, out float surfaceHeight) {
+               vec3 viewDirTangent, vec2 dx, vec2 dy, float distanceFade,
+               out float surfaceHeight) {
     surfaceHeight = 1.0;
 #ifndef POM
     return uv;
@@ -159,7 +300,7 @@ vec2 pomOffset(sampler2D normalsTex, vec2 uv, vec2 base, vec2 size,
     if (grazingFade <= 0.0) return uv;
 
     vec2 localUV = (uv - base) / size;
-    vec2 rayOffset = -viewDirTangent.xy / viewZ * (POM_DEPTH * grazingFade);
+    vec2 rayOffset = -viewDirTangent.xy / viewZ * (POM_DEPTH * grazingFade * (1.0 - distanceFade));
     float offsetLength = length(rayOffset);
     if (offsetLength > 0.85) rayOffset *= 0.85 / offsetLength;
 
@@ -192,7 +333,7 @@ vec2 pomOffset(sampler2D normalsTex, vec2 uv, vec2 base, vec2 size,
 
     if (!hitSurface) return uv;
 
-    for (int i = 0; i < 2; i++) {
+    for (int i = 0; i < 5; i++) {
         vec2 midUV = (previousUV + currentUV) * 0.5;
         float midRayDepth = (previousRayDepth + currentRayDepth) * 0.5;
         float midHeight = textureGrad(normalsTex, wrapTile(base + midUV * size, base, size), dx, dy).a;
@@ -217,13 +358,141 @@ vec2 pomOffset(sampler2D normalsTex, vec2 uv, vec2 base, vec2 size,
 #endif
 }
 
-float pomDirectShadow(float surfaceHeight, float fade) {
+float pomDirectShadow(sampler2D normalsTex, vec2 uv, vec2 base, vec2 size,
+                      vec3 lightDirTangent, vec2 dx, vec2 dy,
+                      float surfaceHeight, float distanceFade) {
 #ifndef POM
     return 1.0;
 #else
-    float recess = saturate(1.0 - surfaceHeight);
-    float shade = 1.0 - recess * (0.28 + 0.22 * recess);
-    return mix(shade, 1.0, fade);
+#ifndef POM_SELF_SHADOWS
+    return 1.0;
+#else
+    if (lightDirTangent.z <= 0.02 || surfaceHeight >= 0.995) return 1.0;
+    float rayDepth = 1.0 - surfaceHeight;
+    float rayStep = rayDepth / float(POM_SHADOW_SAMPLES);
+    vec2 localUV = (uv - base) / size;
+    vec2 uvStep = lightDirTangent.xy / lightDirTangent.z * (POM_DEPTH * rayStep);
+    float strongestBlocker = 0.0;
+    float blockerSum = 0.0;
+    float sampleCount = 0.0;
+    for (int i = 0; i < POM_SHADOW_SAMPLES; i++) {
+        localUV += uvStep;
+        rayDepth -= rayStep;
+        if (rayDepth <= 0.0) break;
+        float mapDepth = 1.0 - textureGrad(normalsTex, wrapTile(base + localUV * size, base, size), dx, dy).a;
+        float blocker = smoothstep(0.008, 0.065, rayDepth - mapDepth);
+        strongestBlocker = max(strongestBlocker, blocker);
+        blockerSum += blocker;
+        sampleCount += 1.0;
+    }
+    float averageBlocker = blockerSum / max(sampleCount, 1.0);
+    float occlusion = mix(averageBlocker, strongestBlocker, 0.60);
+    float visibility = 1.0 - smoothstep(0.03, 0.70, occlusion) * POM_SHADOW_STRENGTH;
+    return mix(visibility, 1.0, distanceFade);
+#endif
+#endif
+}
+
+vec3 materialTangent(vec3 N) {
+    vec3 axis = abs(N.y) < 0.999 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+    return normalize(cross(axis, N));
+}
+
+vec3 thinFilmFresnel(float cosTheta, vec3 baseF, float strength) {
+#ifndef THIN_FILM
+    return baseF;
+#else
+    if (strength <= 0.0) return baseF;
+    float c = saturate(cosTheta);
+    float thickness = mix(180.0, 620.0, strength);
+    float opticalPath = 2.0 * 1.46 * thickness * sqrt(max(1.0 - (1.0 - c * c) / (1.46 * 1.46), 0.0));
+    vec3 phase = 2.0 * PI * opticalPath / vec3(650.0, 510.0, 475.0);
+    vec3 fringe = 0.5 + 0.5 * cos(phase);
+    float visibility = strength * mix(0.35, 1.0, pow(1.0 - c, 2.0));
+    return saturate(baseF + (fringe - 0.5) * (1.0 - baseF) * (0.32 * visibility));
+#endif
+}
+
+vec3 anisotropicDiscLightSpecular(vec3 N, vec3 V, vec3 L, float sinRadius,
+                                  float roughness, vec3 f0, float anisotropy,
+                                  float thinFilm) {
+    vec3 R = reflect(-V, N);
+    vec3 toRay = R * dot(L, R) - L;
+    vec3 Lr = normalize(L + toRay * saturate(sinRadius / max(length(toRay), 1e-5)));
+    vec3 H = normalize(V + Lr);
+    float NoH = saturate(dot(N, H));
+    float NoV = max(dot(N, V), 1e-4);
+    float NoL = saturate(dot(N, Lr));
+    float a = max(roughness * roughness, 2e-3);
+    float ap = min(a + 0.5 * sinRadius, 1.0);
+    float norm = a / ap;
+    norm *= norm;
+    float aspect = sqrt(max(1.0 - 0.90 * anisotropy, 0.10));
+    float ax = max(ap / aspect, 2e-3);
+    float ay = max(ap * aspect, 2e-3);
+    vec3 T = materialTangent(N);
+    vec3 B = cross(N, T);
+    float ToH = dot(T, H);
+    float BoH = dot(B, H);
+    float d = ToH * ToH / (ax * ax) + BoH * BoH / (ay * ay) + NoH * NoH;
+    float D = norm / (PI * ax * ay * d * d);
+    float ToV = dot(T, V);
+    float BoV = dot(B, V);
+    float ToL = dot(T, Lr);
+    float BoL = dot(B, Lr);
+    float lambdaV = NoL * length(vec3(ax * ToV, ay * BoV, NoV));
+    float lambdaL = NoV * length(vec3(ax * ToL, ay * BoL, NoL));
+    float G = 0.5 / max(lambdaV + lambdaL, 1e-5);
+    vec3 F = fresnelSchlick(dot(V, H), f0);
+    F = thinFilmFresnel(dot(V, H), F, thinFilm);
+    return min(D * G * NoL, 32.0) * F;
+}
+
+vec3 materialDiscLightSpecular(vec3 N, vec3 V, vec3 L, float sinRadius,
+                               float roughness, vec3 f0, float anisotropy,
+                               float clearcoat, float thinFilm) {
+    float aniso = 0.0;
+#ifdef ANISOTROPIC_MATERIALS
+    aniso = saturate(anisotropy * ANISOTROPY_STRENGTH);
+#endif
+    float film = 0.0;
+#ifdef THIN_FILM
+    film = saturate(thinFilm * THIN_FILM_STRENGTH);
+#endif
+    vec3 base = aniso > 0.001 || film > 0.001
+        ? anisotropicDiscLightSpecular(N, V, L, sinRadius, roughness, f0, aniso, film)
+        : discLightSpecular(N, V, L, sinRadius, roughness, f0);
+#ifdef CLEARCOAT_MATERIALS
+    float coat = saturate(clearcoat * CLEARCOAT_STRENGTH);
+    if (coat > 0.001) {
+        vec3 coatF0 = thinFilmFresnel(dot(N, V), vec3(0.04), film);
+        vec3 coatSpec = discLightSpecular(N, V, L, sinRadius, 0.06, coatF0);
+        base = base * (1.0 - coat * 0.25) + coatSpec * (coat * 0.25);
+    }
+#endif
+    return base;
+}
+
+vec3 materialReflectionFresnel(float cosTheta, float f0, vec3 albedo,
+                               float clearcoat, float thinFilm) {
+    float film = 0.0;
+#ifdef THIN_FILM
+    film = saturate(thinFilm * THIN_FILM_STRENGTH);
+#endif
+    vec3 base = thinFilmFresnel(cosTheta, materialFresnel(cosTheta, f0, albedo), film);
+#ifdef CLEARCOAT_MATERIALS
+    float coat = saturate(clearcoat * CLEARCOAT_STRENGTH);
+    vec3 coatF = thinFilmFresnel(cosTheta, fresnelSchlick(cosTheta, vec3(0.04)), film);
+    base = base * (1.0 - coatF * coat) + coatF * coat;
+#endif
+    return base;
+}
+
+float materialReflectionRoughness(float roughness, float clearcoat) {
+#ifdef CLEARCOAT_MATERIALS
+    return mix(roughness, 0.06, saturate(clearcoat * CLEARCOAT_STRENGTH));
+#else
+    return roughness;
 #endif
 }
 

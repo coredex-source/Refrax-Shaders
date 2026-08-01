@@ -111,7 +111,10 @@ vec3 blockLightAt(vec3 pos, vec3 N, float lmBlock) {
 }
 
 void main() {
-    vec4 albedo = texture(gtexture, uv) * vcolor;
+    vec2 uvDx = dFdx(uv);
+    vec2 uvDy = dFdy(uv);
+    vec2 texcoord = uv;
+    vec4 albedo = textureGrad(gtexture, texcoord, uvDx, uvDy) * vcolor;
 
 #ifdef PARTICLE_MARKER
     float splashBlue = albedo.b - max(albedo.r, albedo.g);
@@ -150,6 +153,19 @@ void main() {
         if (albedo.a < max(alphaTestRef, 0.5)) discard;
         albedo.a = 1.0;
     }
+    float pomShadow = 1.0;
+#if defined HAND && defined PBR_MATERIALS && defined POM
+    if (!cutoutFoliage && dot(tangentW, tangentW) > 1e-6) {
+        mat3 handTBN = makeTBN(normalize(normalW), tangentW, tangentSign);
+        vec3 viewDirT = normalize(transpose(handTBN) * -normalize(scenePos));
+        vec3 lightDirW = normalize(mat3(gbufferModelViewInverse) * shadowLightPosition);
+        vec3 lightDirT = normalize(transpose(handTBN) * lightDirW);
+        float pomHeight;
+        texcoord = pomOffset(normals, texcoord, tileBase, tileSize, viewDirT, uvDx, uvDy, 0.0, pomHeight);
+        pomShadow = pomDirectShadow(normals, texcoord, tileBase, tileSize, lightDirT, uvDx, uvDy, pomHeight, 0.0);
+        albedo = textureGrad(gtexture, texcoord, uvDx, uvDy) * vcolor;
+    }
+#endif
 #ifdef ENTITY
     albedo.rgb = mix(albedo.rgb, entityColor.rgb, entityColor.a);
 #endif
@@ -191,16 +207,28 @@ void main() {
     // labPBR for translucents (stained glass, ice, held water...). Real water
     // tops get their normal replaced by the procedural waves below.
     Material mat;
-    mat.roughness = 0.9; mat.f0 = 0.04; mat.emission = 0.0; mat.sss = 0.0; mat.porosity = 0.0;
-    if (!cutoutFoliage) mat = decodeSpecular(texture(specular, uv));
+    mat.roughness = 0.9;
+    mat.f0 = 0.04;
+    mat.emission = 0.0;
+    mat.sss = 0.0;
+    mat.porosity = 0.0;
+    mat.anisotropy = 0.0;
+    mat.clearcoat = 0.0;
+    mat.thinFilm = 0.0;
+    if (!cutoutFoliage) mat = decodeSpecular(textureGrad(specular, texcoord, uvDx, uvDy));
+    if (!cutoutFoliage) applyFallbackMaterial(blockId, mat);
+    if (mat.emission <= 0.0 && blockId == 0)
+        mat.emission = inferredEmission(linearToSrgb(albedo.rgb), lmcoord.x);
     if (!cutoutFoliage && dot(tangentW, tangentW) > 1e-6) {
         mat3 TBN = makeTBN(N, tangentW, tangentSign);
-        vec4 nTex = texture(normals, uv);
+        vec4 nTex = textureGrad(normals, texcoord, uvDx, uvDy);
         if (nTex.r + nTex.g > 0.0005) {
-            N = normalize(TBN * decodeNormalTex(nTex));
-            materialAO = decodeTexAO(nTex);
+            N = normalize(TBN * filteredNormalTex(nTex, uvDx, uvDy, vec2(textureSize(normals, 0))));
+            float decodedAO = decodeTexAO(nTex);
+            materialAO = mix(decodedAO, decodedAO * decodedAO, PBR_AO_DEPTH);
         }
     }
+    mat.roughness = materialSpecularRoughness(mat.roughness, N);
   #endif
   #if defined WORLD_NETHER
     vec3 lightCol = vec3(0.0);
@@ -263,6 +291,8 @@ void main() {
     vec3 shadow = vec3(pow(lmcoord.y, 2.0));
     #endif
     NoL = 0.6;
+  #elif defined HAND
+    vec3 shadow = vec3(pomShadow);
   #else
     vec3 shadow = getShadow(scenePos, N, NoL, dither, shadowModelView, shadowProjection, shadowtex0, shadowtex1, shadowcolor0);
     #if defined CLOUD_SHADOWS && !defined WORLD_NETHER && !defined WORLD_END
@@ -289,7 +319,7 @@ void main() {
   #ifdef THUNDER_ACTIVE
     flash = thunderLight(scenePos, N, lmcoord.y, lightningBoltPosition);
   #endif
-    vec3 lit = albedo.rgb * (lightCol * NoL * shadow + (skyLight + blockLight + minAmb) * materialAO + flash);
+    vec3 lit = albedo.rgb * (lightCol * NoL * shadow * mix(materialAO, 1.0, 0.35) + (skyLight + blockLight + minAmb) * materialAO + flash);
     float alpha = albedo.a;
   #if defined PBR_MATERIALS && !defined PARTICLE
     lit += albedo.rgb * sqrt(albedo.rgb) * (mat.emission * EMISSION_STRENGTH * EMISSION_SCALE);
@@ -304,6 +334,30 @@ void main() {
     #endif
   #endif
 
+  #if defined HAND && defined PBR_MATERIALS && !defined PARTICLE
+    {
+        vec3 V = normalize(-scenePos);
+        bool matteHand = isMatteFoliageMaterial(mat.roughness, mat.f0);
+        bool metalHand = !matteHand && isMetal(mat.f0);
+        float handSmoothness = saturate(1.0 - sqrt(saturate(mat.roughness)));
+        vec3 handF0 = matteHand ? vec3(0.0) : materialF0(mat.f0, albedo.rgb);
+        float handSpecWeight = metalHand ? 1.0 : mix(0.08, 0.60, smoothstep(0.10, 0.85, handSmoothness));
+        handSpecWeight = max(handSpecWeight, mat.clearcoat * 0.35);
+        if (!matteHand && handSpecWeight > 0.0) {
+            vec3 handSpecular = materialDiscLightSpecular(N, V, lightDir, SUN_GLINT_RADIUS, mat.roughness, handF0, mat.anisotropy, mat.clearcoat, mat.thinFilm) * lightCol * shadow * handSpecWeight * PBR_GLINT_STRENGTH;
+            lit += compressMaterialHighlight(handSpecular);
+        }
+        float handNoV = saturate(dot(V, N));
+        float handReflectionRoughness = materialReflectionRoughness(mat.roughness, mat.clearcoat);
+        vec3 handFresnel = matteHand ? vec3(0.0) : materialReflectionFresnel(handNoV, mat.f0, albedo.rgb, mat.clearcoat, mat.thinFilm);
+        float handReflectionWeight = metalHand ? mix(0.35, 0.85, 1.0 - saturate(handReflectionRoughness)) : pow(1.0 - saturate(handReflectionRoughness), 2.0);
+        vec3 handReflectionDirection = reflect(-V, N);
+        vec3 handReflection = dimensionSkyReflection(handReflectionDirection, sunDir, fogColor, frameTimeCounter, rainStrength);
+        handReflection *= mix(0.12, 1.0, lmcoord.y * lmcoord.y);
+        lit += handReflection * handFresnel * handReflectionWeight;
+    }
+  #endif
+
   #ifdef WATER
     if (!realWater && cutoutFoliage) {
         outWaterData = vec4(N, 0.0);
@@ -314,7 +368,7 @@ void main() {
     vec3 viewDirW = normalize(-scenePos);
     vec3 surfaceFresnel = fresnelSchlick(saturate(dot(viewDirW, N)), vec3(0.02));
   #if defined PBR_MATERIALS && !defined PARTICLE
-    if (!realWater) surfaceFresnel = materialFresnel(dot(viewDirW, N), mat.f0, albedo.rgb);
+    if (!realWater) surfaceFresnel = materialReflectionFresnel(dot(viewDirW, N), mat.f0, albedo.rgb, mat.clearcoat, mat.thinFilm);
   #endif
     float fres = realWater ? waterFresnel(dot(viewDirW, N)) : luminance(surfaceFresnel);
 
@@ -350,7 +404,7 @@ void main() {
     vec3 glintF0 = vec3(0.02);
   #if defined PBR_MATERIALS && !defined PARTICLE
     if (!realWater) {
-        glintRough = max(mat.roughness * 0.5, 0.03);
+        glintRough = max(materialReflectionRoughness(mat.roughness, mat.clearcoat) * 0.5, 0.03);
         glintF0 = materialF0(mat.f0, albedo.rgb);
     }
   #else
@@ -358,8 +412,15 @@ void main() {
   #endif
     vec3 sunSpecShape = realWater
         ? waterDiscLightSpecular(N, viewDirW, lightDir, SUN_GLINT_RADIUS, glintRough, glintF0)
+  #if defined PBR_MATERIALS && !defined PARTICLE
+        : materialDiscLightSpecular(N, viewDirW, lightDir, SUN_GLINT_RADIUS, glintRough, glintF0, mat.anisotropy, mat.clearcoat, mat.thinFilm);
+  #else
         : discLightSpecular(N, viewDirW, lightDir, SUN_GLINT_RADIUS, glintRough, glintF0);
+  #endif
     vec3 sunSpec = sunSpecShape * lightCol * shadow * (realWater ? SUN_GLINT_STRENGTH : PBR_GLINT_STRENGTH);
+  #if defined PBR_MATERIALS && !defined PARTICLE
+    if (!realWater) sunSpec = compressMaterialHighlight(sunSpec);
+  #endif
 
     if (realWater) {
         vec2 suv = gl_FragCoord.xy / vec2(viewWidth, viewHeight);
@@ -396,12 +457,6 @@ void main() {
 #endif
         outWaterData = vec4(N, 2.0);
     } else {
-      #ifdef TRANSLUCENT_DEPTH
-        {
-            float path = mix(1.0, 1.0 / max(abs(dot(viewDirW, N)), 0.14), GLASS_THICKNESS);
-            alpha = 1.0 - pow(max(1.0 - alpha, 1e-4), path);
-        }
-      #endif
       #if defined PBR_MATERIALS && !defined PARTICLE
         float glassSmooth = 1.0 - sqrt(saturate(mat.roughness));
         vec3 reflW = surfaceFresnel * (0.8 + 4.5 * glassSmooth * glassSmooth);
@@ -449,7 +504,7 @@ void main() {
             alpha = saturate(max(texA.a, texB.a) * (0.68 + 0.26 * veil));
             alpha *= smoothstep(0.08, 0.55, length(scenePos));
         }
-        outWaterData = vec4(N, blockId == 10018 ? 3.0 : 1.5);
+        outWaterData = vec4(N, blockId == 10018 ? 3.0 : 0.0);
     }
   #endif
 
@@ -457,6 +512,9 @@ void main() {
     outWaterData = vec4(N, 0.0);
 #endif
     outColor = vec4(lit, alpha);
+#ifdef HAND_OPAQUE
+    outColor.a = 0.49;
+#endif
 #ifdef OPAQUE_PARTICLE
   #ifdef PARTICLE_MARKER
     outColor.a = 0.25;
