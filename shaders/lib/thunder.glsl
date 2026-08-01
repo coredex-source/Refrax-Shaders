@@ -6,8 +6,10 @@
 #include "/lib/settings.glsl"
 #include "/lib/common.glsl"
 
-#if defined THUNDER_FLASH && defined IS_IRIS && !defined WORLD_NETHER && !defined WORLD_END
-  #define THUNDER_ACTIVE
+#ifdef THUNDER_FLASH
+  #if defined IS_IRIS && !defined WORLD_NETHER && !defined WORLD_END
+    #define THUNDER_ACTIVE
+  #endif
 #endif
 
 const vec3 THUNDER_TINT = vec3(0.80, 0.87, 1.00);

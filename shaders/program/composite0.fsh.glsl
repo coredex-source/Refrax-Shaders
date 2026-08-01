@@ -60,6 +60,7 @@ uniform float frameTimeCounter, rainStrength, viewWidth, viewHeight, far, blindn
 uniform int frameCounter, isEyeInWater;
 uniform ivec2 eyeBrightnessSmooth;
 uniform float refraxSnowBiome;
+uniform float refraxBiomeTemp, refraxBiomeHumid, refraxBiomeSwamp, refraxBiomeAlpine;
 #ifdef THUNDER_ACTIVE
 uniform vec4 lightningBoltPosition;
 #endif
@@ -163,6 +164,7 @@ void main() {
     vec3 lightDir = normalize(mat3(gbufferModelViewInverse) * shadowLightPosition);
     float dither = ignAnim(gl_FragCoord.xy, frameCounter);
     float fogDist = mix(dist, far, skyMask);
+    BiomeAtmos biome = biomeAtmos(refraxBiomeTemp, refraxBiomeHumid, refraxBiomeSwamp, refraxBiomeAlpine);
 
 #ifdef GOD_RAYS
 #ifndef WORLD_NETHER
@@ -191,7 +193,7 @@ void main() {
                 accum += vec3(s);
             }
             float phase = pow(saturate(dot(dirW, lightDir)), 5.0) * 0.75 + 0.12;
-            float media = isEyeInWater == 1 ? 0.05 : 0.006 * (1.0 + rainStrength * 2.0);
+            float media = isEyeInWater == 1 ? 0.05 : 0.006 * (1.0 + rainStrength * 2.0) * mix(1.0, biome.haze, 0.6);
             color += (accum / float(steps)) * vlCol * phase * media * maxD * VL_STRENGTH * (isEyeInWater == 1 ? WATER_COLOR * 3.0 : vec3(1.0));
         }
     }
@@ -260,7 +262,7 @@ void main() {
         lightVis = cloudShadow(cameraPosition + dirW * (fogDist * 0.5), lightDir,
                                frameTimeCounter, rainStrength);
   #endif
-        AerialResult ap = aerialPerspective(dirW, fogDist, cameraPosition.y + scenePos.y * 0.5, sunDir, lightDir, sunColor(sunDir.y) + moonColor(-sunDir.y), rainStrength, snowFall, lightVis, maxOpacity);
+        AerialResult ap = aerialPerspective(dirW, fogDist, cameraPosition.y + scenePos.y * 0.5, sunDir, lightDir, sunColor(sunDir.y) + moonColor(-sunDir.y), rainStrength, snowFall, lightVis, maxOpacity, biome);
   #ifdef THUNDER_ACTIVE
         ap.inscatter += THUNDER_TINT * (thunderSkyGlow(lightningBoltPosition) * 0.35
                       * (1.0 - luminance(ap.transmittance)));
@@ -276,11 +278,12 @@ void main() {
         vec3 fogCol = endFogColor() * 1.6;
         float fogAmt = 1.0 - exp(-fogDist * FOG_BASE * 8.0 * FOG_DENSITY);
   #else
-        vec3 fogCol = skyGradient(dirW, sunDir, rainStrength);
+        vec3 fogCol = skyGradient(dirW, sunDir, rainStrength) * biome.tint;
         if (snowFall > 0.001)
             fogCol = mix(fogCol, luminance(fogCol) * vec3(0.92, 0.99, 1.14) * 1.22, saturate(snowFall * SNOW_FOG) * 0.80);
         float hFall = exp(-max(cameraPosition.y + scenePos.y * 0.5 - 64.0, 0.0) * FOG_HEIGHT_FALLOFF);
-        float density = FOG_BASE * FOG_DENSITY * (1.0 + rainStrength * FOG_RAIN_DENSITY + snowFall * SNOW_FOG * 0.90) * hFall;
+        float wetFog = rainStrength * FOG_RAIN_DENSITY + snowFall * SNOW_FOG * 0.90;
+        float density = FOG_BASE * FOG_DENSITY * (mix(biome.density, 1.0, saturate(rainStrength + snowFall)) + wetFog) * hFall;
         float fogAmt = 1.0 - exp(-fogDist * density);
   #endif
   #ifdef THUNDER_ACTIVE

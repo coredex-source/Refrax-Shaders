@@ -48,6 +48,7 @@ uniform vec3 relativeEyePosition;
 #endif
 uniform float refraxWetBiome;
 uniform float refraxSnowBiome;
+uniform float refraxBiomeTemp, refraxBiomeHumid, refraxBiomeSwamp, refraxBiomeAlpine;
 #ifdef THUNDER_ACTIVE
 uniform vec4 lightningBoltPosition;
 #endif
@@ -122,6 +123,13 @@ void main() {
 
     if (depth >= 1.0 && !lodPixel) {
         vec3 sky = dimensionSky(dirW, sunDir, fogColor, frameTimeCounter, rainStrength);
+#ifdef BIOME_ATMOS_ACTIVE
+        {
+            BiomeAtmos biome = biomeAtmos(refraxBiomeTemp, refraxBiomeHumid, refraxBiomeSwamp, refraxBiomeAlpine);
+            float band = (1.0 - smoothstep(0.0, 0.30, dirW.y)) * (1.0 - rainStrength) * 0.65;
+            sky *= mix(vec3(1.0), biome.tint, band);
+        }
+#endif
         vec4 clouds = texture(colortex13, fsrRegionUV(uv, viewTexel));
         sky = sky * clouds.a + clouds.rgb;
 #ifdef THUNDER_ACTIVE
@@ -160,7 +168,7 @@ void main() {
     vec2 fpXZ = fwidth(scenePos.xz);
     float footprint = max(fpXZ.x, fpXZ.y);
 
-#if defined SNOW_COVER && !defined WORLD_NETHER && !defined WORLD_END
+#ifdef SNOW_ACTIVE
     float snowCover = 0.0;
     {
         float snowAmt = saturate(wetness) * refraxSnowBiome;
@@ -258,7 +266,7 @@ void main() {
     vec3 color = albedo * diffuse;
     color += albedo * sqrt(albedo) * (emission * EMISSION_STRENGTH * EMISSION_SCALE);
 
-#if defined SNOW_COVER && !defined WORLD_NETHER && !defined WORLD_END
+#ifdef SNOW_ACTIVE
     if (snowCover > 0.001)
         color += snowSparkle(worldPos, N, -dirW, lightDir, length(scenePos)) * lightCol * directShadow * snowCover;
 #endif

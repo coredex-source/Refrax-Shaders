@@ -6,6 +6,12 @@
 #include "/lib/common.glsl"
 #include "/lib/noise.glsl"
 
+#ifdef SNOW_COVER
+  #if !defined WORLD_NETHER && !defined WORLD_END
+    #define SNOW_ACTIVE
+  #endif
+#endif
+
 const vec3 SNOW_ALBEDO = vec3(0.84, 0.88, 0.96);
 
 struct WetResult {

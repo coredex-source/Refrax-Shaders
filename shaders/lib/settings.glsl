@@ -203,6 +203,9 @@ const float drynessHalflife = 800.0;
 #define AERIAL_STRENGTH 1.00 // [0.00 0.25 0.50 0.75 1.00 1.25 1.50 2.00 3.00]
 #define AERIAL_BLUENESS 0.20 // [0.00 0.10 0.20 0.30 0.40 0.50 0.60 0.75 0.90 1.00]
 
+#define BIOME_ATMOSPHERE
+#define BIOME_ATMOS_STRENGTH 1.00 // [0.00 0.25 0.50 0.75 1.00 1.25 1.50 2.00]
+
 //#define CALM_MODE
 #define CALM_STRENGTH 1.00 // [0.10 0.20 0.30 0.40 0.50 0.60 0.70 0.80 0.90 1.00]
 

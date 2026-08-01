@@ -5,6 +5,7 @@
 #include "/lib/settings.glsl"
 #include "/lib/common.glsl"
 #include "/lib/noise.glsl"
+#include "/lib/biome.glsl"
 
 #ifdef PHYSICAL_SKY
   #if !defined WORLD_NETHER && !defined WORLD_END && !defined REFRAX_NO_ATMOS_LUT
@@ -194,14 +195,16 @@ struct AerialResult {
     vec3 inscatter;
 };
 
-AerialResult aerialPerspective(vec3 dirW, float dist, float midY, vec3 sunDir, vec3 lightDir, vec3 lightCol, float rain, float snow, float lightVis, float maxOpacity) {
+AerialResult aerialPerspective(vec3 dirW, float dist, float midY, vec3 sunDir, vec3 lightDir, vec3 lightCol, float rain, float snow, float lightVis, float maxOpacity, BiomeAtmos biome) {
     float hFall = exp(-max(midY - 64.0, 0.0) * FOG_HEIGHT_FALLOFF);
-    float density = FOG_BASE * FOG_DENSITY * (1.0 + rain * FOG_RAIN_DENSITY + snow * SNOW_FOG * 0.90) * hFall;
+    float wetFog = rain * FOG_RAIN_DENSITY + snow * SNOW_FOG * 0.90;
+    float density = FOG_BASE * FOG_DENSITY * (mix(biome.density, 1.0, saturate(rain + snow)) + wetFog) * hFall;
     float k = density / ATMOS_SIGMA_E_REF;
+    float haze = ATMOS_HAZE_E * mix(biome.haze, 1.0, saturate(rain + snow));
 
     vec3 sigmaR = ATMOS_RAYLEIGH_AERIAL * k;
-    float sigmaM = ATMOS_MIE_S * ATMOS_HAZE_E * k;
-    vec3 sigmaE = max((ATMOS_RAYLEIGH_AERIAL + vec3((ATMOS_MIE_S + ATMOS_MIE_A) * ATMOS_HAZE_E)) * k, vec3(1e-9));
+    float sigmaM = ATMOS_MIE_S * haze * k;
+    vec3 sigmaE = max((ATMOS_RAYLEIGH_AERIAL + vec3((ATMOS_MIE_S + ATMOS_MIE_A) * haze)) * k, vec3(1e-9));
 
     float cosT = dot(dirW, lightDir);
     vec3 direct = (sigmaR * atmosRayleighPhase(cosT) + vec3(sigmaM * atmosMiePhase(cosT))) * lightCol * lightVis * AERIAL_STRENGTH;
@@ -219,6 +222,8 @@ AerialResult aerialPerspective(vec3 dirW, float dist, float midY, vec3 sunDir, v
         ambient = mix(ambient, luminance(ambient) * vec3(0.92, 0.99, 1.14) * 1.22, s * 0.80);
         direct *= 1.0 - s * 0.55;
     }
+    ambient *= biome.tint;
+    direct *= mix(vec3(1.0), biome.tint, 0.5);
 
     AerialResult r;
     r.transmittance = max(exp(-sigmaE * dist), vec3(1.0 - maxOpacity));
