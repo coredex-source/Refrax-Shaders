@@ -11,6 +11,9 @@ uniform vec3 cameraPosition;
 uniform float frameTimeCounter;
 uniform float viewWidth, viewHeight;
 uniform int frameCounter;
+#ifdef WEATHER
+uniform float refraxSnowBiome;
+#endif
 
 in vec4 mc_Entity;
 in vec2 mc_midTexCoord;
@@ -50,7 +53,7 @@ void main() {
         float wlen = length(windDir);
         windDir = wlen > 1e-4 ? windDir / wlen : vec2(1.0, 0.0);
         float gust = 0.85 + 0.15 * sin(frameTimeCounter * 0.7 + scenePos.x * 0.15 + scenePos.z * 0.15);
-        float slant = RAIN_SLANT * 0.35 * gust;
+        float slant = RAIN_SLANT * mix(0.35, 0.14, saturate(refraxSnowBiome)) * gust;
         scenePos.xz += windDir * (slant * clamp(scenePos.y, -12.0, 12.0));
         viewPos = gbufferModelView * vec4(scenePos, 1.0);
     }

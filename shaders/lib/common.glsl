@@ -74,6 +74,14 @@ vec4 taaJitterPos(vec4 clipPos, vec2 viewSize, int frame) {
     return clipPos;
 }
 
+vec2 taaJitterUV(vec2 viewSize, int frame) {
+#if defined TEMPORAL_AA && !defined TAAU
+    return taaOffset(frame) / viewSize;
+#else
+    return vec2(0.0);
+#endif
+}
+
 vec3 discLightSpecular(vec3 N, vec3 V, vec3 L, float sinRadius, float roughness, vec3 f0) {
     vec3 R = reflect(-V, N);
     vec3 toRay = R * dot(L, R) - L;

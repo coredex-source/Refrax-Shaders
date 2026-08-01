@@ -194,9 +194,9 @@ struct AerialResult {
     vec3 inscatter;
 };
 
-AerialResult aerialPerspective(vec3 dirW, float dist, float midY, vec3 sunDir, vec3 lightDir, vec3 lightCol, float rain, float lightVis, float maxOpacity) {
+AerialResult aerialPerspective(vec3 dirW, float dist, float midY, vec3 sunDir, vec3 lightDir, vec3 lightCol, float rain, float snow, float lightVis, float maxOpacity) {
     float hFall = exp(-max(midY - 64.0, 0.0) * FOG_HEIGHT_FALLOFF);
-    float density = FOG_BASE * FOG_DENSITY * (1.0 + rain * FOG_RAIN_DENSITY) * hFall;
+    float density = FOG_BASE * FOG_DENSITY * (1.0 + rain * FOG_RAIN_DENSITY + snow * SNOW_FOG * 0.90) * hFall;
     float k = density / ATMOS_SIGMA_E_REF;
 
     vec3 sigmaR = ATMOS_RAYLEIGH_AERIAL * k;
@@ -213,6 +213,11 @@ AerialResult aerialPerspective(vec3 dirW, float dist, float midY, vec3 sunDir, v
         vec3 grey = overcastGrey(ambient, 0.62);
         ambient = mix(ambient, grey, rain * 0.90);
         direct *= 1.0 - rain * 0.85;
+    }
+    if (snow > 0.001) {
+        float s = saturate(snow * SNOW_FOG);
+        ambient = mix(ambient, luminance(ambient) * vec3(0.92, 0.99, 1.14) * 1.22, s * 0.80);
+        direct *= 1.0 - s * 0.55;
     }
 
     AerialResult r;

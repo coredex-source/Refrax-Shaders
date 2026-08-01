@@ -12,6 +12,7 @@
 #include "/lib/ssr.glsl"
 #include "/lib/labpbr.glsl"
 #include "/lib/dh.glsl"
+#include "/lib/thunder.glsl"
 
 uniform sampler2D gtexture;
 uniform sampler2D lightmap;
@@ -46,6 +47,9 @@ uniform vec3 relativeEyePosition;
 #endif
 #ifdef ENTITY
 uniform vec4 entityColor;
+#endif
+#ifdef THUNDER_ACTIVE
+uniform vec4 lightningBoltPosition;
 #endif
 
 in vec2 uv;
@@ -169,6 +173,7 @@ void main() {
     vec3 sunDir = normalize(mat3(gbufferModelViewInverse) * sunPosition);
     vec3 lightDir = normalize(mat3(gbufferModelViewInverse) * shadowLightPosition);
     float dither = ignAnim(gl_FragCoord.xy, frameCounter);
+    vec2 ssrJitter = taaJitterUV(vec2(viewWidth, viewHeight), frameCounter);
     float materialAO = 1.0;
 
   #if defined PBR_MATERIALS && !defined PARTICLE
@@ -235,7 +240,11 @@ void main() {
     blockLight *= facing;
   #endif
     vec3 minAmb = vec3(0.010, 0.011, 0.014) * MIN_AMBIENT;
-    vec3 lit = albedo.rgb * (lightCol * NoL * shadow + (skyLight + blockLight + minAmb) * materialAO);
+    vec3 flash = vec3(0.0);
+  #ifdef THUNDER_ACTIVE
+    flash = thunderLight(scenePos, N, lmcoord.y, lightningBoltPosition);
+  #endif
+    vec3 lit = albedo.rgb * (lightCol * NoL * shadow + (skyLight + blockLight + minAmb) * materialAO + flash);
     float alpha = albedo.a;
   #if defined PBR_MATERIALS && !defined PARTICLE
     lit += albedo.rgb * sqrt(albedo.rgb) * (mat.emission * EMISSION_STRENGTH * EMISSION_SCALE);
@@ -277,8 +286,8 @@ void main() {
         vec3 reflDirV = mat3(gbufferModelView) * reflDirW;
         vec3 hit;
         float hitS = WATER_REFLECTION_MODE == 1
-            ? raymarchSSRFast(depthtex1, viewPos, reflDirV, gbufferProjection, gbufferProjectionInverse, dither, hit)
-            : raymarchSSR(depthtex1, viewPos, reflDirV, gbufferProjection, gbufferProjectionInverse, dither, hit);
+            ? raymarchSSRFast(depthtex1, viewPos, reflDirV, gbufferProjection, gbufferProjectionInverse, dither, ssrJitter, hit)
+            : raymarchSSR(depthtex1, viewPos, reflDirV, gbufferProjection, gbufferProjectionInverse, dither, ssrJitter, hit);
         if (hitS > 0.0) {
             vec3 hitView = screenToView(hit, gbufferProjectionInverse);
             vec3 hitScene = (gbufferModelViewInverse * vec4(hitView, 1.0)).xyz;
@@ -289,6 +298,9 @@ void main() {
             }
         }
     }
+  #ifdef THUNDER_ACTIVE
+    refl *= 1.0 + thunderSkyGlow(lightningBoltPosition) * 1.5;
+  #endif
     float glintRough = WATER_ROUGHNESS + saturate(length(scenePos) / 96.0) * 0.018;
     vec3 glintF0 = vec3(0.02);
   #if defined PBR_MATERIALS && !defined PARTICLE
@@ -320,7 +332,7 @@ void main() {
         vec3 trans = waterTransmittanceTinted(vcolor.rgb, waterDepth);
 
         vec3 scatter = mix(WATER_COLOR * WATER_COLOR, srgbToLinear(vcolor.rgb) * 0.20, 0.25) * 0.80;
-        vec3 body = scatter * (lightCol * NoL * shadow * 0.22 + skyLight * 0.92 + blockLight * 0.52);
+        vec3 body = scatter * (lightCol * NoL * shadow * 0.22 + skyLight * 0.92 + blockLight * 0.52 + flash * 0.60);
         body = mix(body, body * 0.42, saturate(1.0 - trans.g));
         lit = mix(body, refl, fres) + sunSpec * 1.5;
         alpha = waterSurfaceAlpha(trans, fres);
@@ -412,10 +424,9 @@ void main() {
         vec3 cool = vec3(0.45, 0.60, 1.00);
         cool *= streakLum / max(luminance(cool), 1e-3);
 
-        vec3 target = isRain ? mix(neutral, cool, RAIN_TINT)
-                             : mix(neutral, vec3(0.88, 0.92, 1.00) * (streakLum / 0.918), 0.35);
-        outColor.rgb = mix(outColor.rgb, target, isRain ? 0.85 : 0.30);
-        outColor.a *= RAIN_OPACITY * (0.55 + 0.45 * rainStrength);
+        vec3 target = isRain ? mix(neutral, cool, RAIN_TINT) : mix(neutral, vec3(0.94, 0.97, 1.00) * (streakLum / 0.918) * 1.15, 0.45);
+        outColor.rgb = mix(outColor.rgb, target, isRain ? 0.85 : 0.45);
+        outColor.a *= RAIN_OPACITY * (0.55 + 0.45 * rainStrength) * (isRain ? 1.0 : 1.30);
     }
 #endif
 #endif

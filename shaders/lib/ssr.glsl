@@ -6,30 +6,32 @@
 #include "/lib/common.glsl"
 
 
-float raymarchSSRCustom(sampler2D depthTex, vec3 viewPos, vec3 reflDirView, mat4 proj, mat4 projInv, float dither, int steps, int refineSteps, float baseStep, float stepGrowth, out vec3 hitScreen) {
+float raymarchSSRCustom(sampler2D depthTex, vec3 viewPos, vec3 reflDirView, mat4 proj, mat4 projInv, float dither, vec2 jitterUV, int steps, int refineSteps, float baseStep, float stepGrowth, out vec3 hitScreen) {
     hitScreen = vec3(0.0);
     float stepLen = baseStep;
     vec3 p = viewPos + reflDirView * stepLen * (0.75 + dither * 0.50);
     for (int i = 0; i < steps; i++) {
         vec3 sp = viewToScreen(p, proj);
         if (clamp(sp.xy, 0.0, 1.0) != sp.xy || sp.z <= 0.0 || sp.z >= 1.0) return 0.0;
-        float d = texture(depthTex, sp.xy).r;
+        float d = texture(depthTex, sp.xy + jitterUV).r;
         vec3 sceneView = screenToView(vec3(sp.xy, d), projInv);
         float diff = sceneView.z - p.z;
-        float thickness = max(stepLen * 2.2, abs(p.z) * 0.01);
+        float thickness = min(max(stepLen * 2.2, abs(p.z) * 0.01), abs(p.z) * 0.50);
         if (diff > 0.0 && diff < thickness && d < 1.0) {
 
             vec3 lo = p - reflDirView * stepLen, hi = p;
             for (int j = 0; j < refineSteps; j++) {
                 vec3 mid = (lo + hi) * 0.5;
                 vec3 msp = viewToScreen(mid, proj);
-                float md = texture(depthTex, msp.xy).r;
+                float md = texture(depthTex, msp.xy + jitterUV).r;
                 vec3 mv = screenToView(vec3(msp.xy, md), projInv);
                 if (mv.z - mid.z > 0.0) hi = mid; else lo = mid;
             }
             hitScreen = viewToScreen((lo + hi) * 0.5, proj);
             vec2 border = min(hitScreen.xy, 1.0 - hitScreen.xy);
-            return saturate(min(border.x, border.y) * 16.0);
+            float edge = saturate(min(border.x, border.y) * 16.0);
+            float certainty = saturate(1.0 - stepLen / max(abs(p.z) * 0.5, 1e-3));
+            return edge * mix(0.55, 1.0, certainty);
         }
         p += reflDirView * stepLen;
         stepLen *= stepGrowth;
@@ -37,15 +39,15 @@ float raymarchSSRCustom(sampler2D depthTex, vec3 viewPos, vec3 reflDirView, mat4
     return 0.0;
 }
 
-float raymarchSSR(sampler2D depthTex, vec3 viewPos, vec3 reflDirView, mat4 proj, mat4 projInv, float dither, out vec3 hitScreen) {
+float raymarchSSR(sampler2D depthTex, vec3 viewPos, vec3 reflDirView, mat4 proj, mat4 projInv, float dither, vec2 jitterUV, out vec3 hitScreen) {
     int steps = PERF_SCALED_COUNT(SSR_STEPS, 6);
-    return raymarchSSRCustom(depthTex, viewPos, reflDirView, proj, projInv, dither, steps, 4, 0.40, 1.22, hitScreen);
+    return raymarchSSRCustom(depthTex, viewPos, reflDirView, proj, projInv, dither, jitterUV, steps, 4, 0.40, 1.22, hitScreen);
 }
 
 float raymarchSSRFast(sampler2D depthTex, vec3 viewPos, vec3 reflDirView,
-                      mat4 proj, mat4 projInv, float dither, out vec3 hitScreen) {
+                      mat4 proj, mat4 projInv, float dither, vec2 jitterUV, out vec3 hitScreen) {
     int steps = PERF_SCALED_COUNT(min(SSR_STEPS, 10), 4);
-    return raymarchSSRCustom(depthTex, viewPos, reflDirView, proj, projInv, dither, max(steps, 4), 2, 0.60, 1.42, hitScreen);
+    return raymarchSSRCustom(depthTex, viewPos, reflDirView, proj, projInv, dither, jitterUV, max(steps, 4), 2, 0.60, 1.42, hitScreen);
 }
 
 #endif

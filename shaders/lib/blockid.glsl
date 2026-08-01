@@ -141,7 +141,9 @@ bool isNoOcclude(int id) { return id >= 10050; }
 bool isFoliage(int id) { return id >= 10050 && id <= 10059; }
 bool isWavingShort(int id) { return id == 10050; }
 bool isWavingLeaf(int id) { return id == 10051; }
-bool isWavingTall(int id) { return id == 10052; }
+bool isWavingTallLower(int id) { return id == 10052; }
+bool isWavingTallUpper(int id) { return id == 10053; }
+bool isWavingColumn(int id) { return id == 10054; }
 
 
 vec3 wavingOffset(int id, vec3 worldPos, vec3 midBlock, float time, float rain) {
@@ -150,25 +152,35 @@ vec3 wavingOffset(int id, vec3 worldPos, vec3 midBlock, float time, float rain) 
 #else
     float storm = smoothstep(0.08, 0.90, saturate(rain));
     float strength = mix(0.62, 2.565, storm) * WAVE_AMOUNT;
-    float t = time * mix(0.90, 1.35, storm) * WAVE_SPEED;
+    float tCalm = time * (0.90 * WAVE_SPEED);
+    float tStorm = time * (1.35 * WAVE_SPEED);
     float phase = dot(worldPos.xz, vec2(0.34, 0.23));
 
     vec2 windDir = CLOUD_WIND;
     windDir /= max(length(windDir), 1e-4);
     vec2 crossWind = vec2(-windDir.y, windDir.x);
 
-    float gustNoise = vnoise3(vec3(worldPos.xz * 0.035, t * 0.16)) - 0.5;
-    float gustWave = sin(phase * 0.55 + t * 0.72 + gustNoise * 1.8);
-    vec2 calmSway = vec2(sin(phase + t), cos(phase * 1.27 + t * 0.78));
-    vec2 stormSway = windDir * (gustWave * 1.25 + gustNoise * 1.6) + crossWind * sin(phase * 0.83 - t * 0.46) * 0.28;
+    float gustNoise = vnoise3(vec3(worldPos.xz * 0.035, tStorm * 0.16)) - 0.5;
+    float gustWave = sin(phase * 0.55 + tStorm * 0.72 + gustNoise * 1.8);
+    vec2 calmSway = vec2(sin(phase + tCalm), cos(phase * 1.27 + tCalm * 0.78));
+    vec2 stormSway = windDir * (gustWave * 1.25 + gustNoise * 1.6) + crossWind * sin(phase * 0.83 - tStorm * 0.46) * 0.28;
     vec2 sway = mix(calmSway, stormSway, storm);
-    if (isWavingShort(id) || isWavingTall(id)) {
+    if (isWavingShort(id)) {
         float w = saturate(0.5 - midBlock.y / 40.0);
-        if (isWavingTall(id)) w = saturate(w * 1.4);
         return vec3(sway.x, 0.0, sway.y) * 0.035 * w * strength;
     }
+    if (isWavingTallLower(id) || isWavingTallUpper(id)) {
+        float hb = saturate(0.5 - midBlock.y / 64.0);
+        float h = isWavingTallUpper(id) ? 0.5 + hb * 0.5 : hb * 0.5;
+        float w = saturate(h * h * 1.4);
+        return vec3(sway.x, 0.0, sway.y) * 0.035 * w * strength;
+    }
+    if (isWavingColumn(id)) {
+        return vec3(sway.x, 0.0, sway.y) * 0.035 * 0.75 * strength;
+    }
     if (isWavingLeaf(id)) {
-        float vertical = sin(phase * 0.7 + t * 0.55) * mix(0.50, 0.20, storm);
+        float vertical = mix(sin(phase * 0.7 + tCalm * 0.55), sin(phase * 0.7 + tStorm * 0.55), storm)
+                       * mix(0.50, 0.20, storm);
         vec3 wob = vec3(sway.x, vertical, sway.y);
         return wob * 0.018 * strength;
     }

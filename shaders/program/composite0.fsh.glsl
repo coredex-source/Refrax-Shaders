@@ -7,6 +7,7 @@
 #include "/lib/water.glsl"
 #include "/lib/shadows.glsl"
 #include "/lib/dh.glsl"
+#include "/lib/thunder.glsl"
 #ifdef LPV_FOG
   #ifdef COLORED_LIGHTING
     #include "/lib/voxel.glsl"
@@ -58,6 +59,10 @@ uniform vec3 fogColor;
 uniform float frameTimeCounter, rainStrength, viewWidth, viewHeight, far, blindness;
 uniform int frameCounter, isEyeInWater;
 uniform ivec2 eyeBrightnessSmooth;
+uniform float refraxSnowBiome;
+#ifdef THUNDER_ACTIVE
+uniform vec4 lightningBoltPosition;
+#endif
 
 in vec2 uv;
 
@@ -248,13 +253,18 @@ void main() {
         float maxOpacity = 1.0;
 #endif
 
+        float snowFall = rainStrength * refraxSnowBiome;
 #ifdef ATMOS_AERIAL_ACTIVE
         float lightVis = 1.0;
   #ifdef CLOUD_SHADOWS
         lightVis = cloudShadow(cameraPosition + dirW * (fogDist * 0.5), lightDir,
                                frameTimeCounter, rainStrength);
   #endif
-        AerialResult ap = aerialPerspective(dirW, fogDist, cameraPosition.y + scenePos.y * 0.5, sunDir, lightDir, sunColor(sunDir.y) + moonColor(-sunDir.y), rainStrength, lightVis, maxOpacity);
+        AerialResult ap = aerialPerspective(dirW, fogDist, cameraPosition.y + scenePos.y * 0.5, sunDir, lightDir, sunColor(sunDir.y) + moonColor(-sunDir.y), rainStrength, snowFall, lightVis, maxOpacity);
+  #ifdef THUNDER_ACTIVE
+        ap.inscatter += THUNDER_TINT * (thunderSkyGlow(lightningBoltPosition) * 0.35
+                      * (1.0 - luminance(ap.transmittance)));
+  #endif
         color = color * ap.transmittance + ap.inscatter;
         if (border > 0.0)
             color = mix(color, skyGradient(dirW, sunDir, rainStrength), border);
@@ -267,9 +277,14 @@ void main() {
         float fogAmt = 1.0 - exp(-fogDist * FOG_BASE * 8.0 * FOG_DENSITY);
   #else
         vec3 fogCol = skyGradient(dirW, sunDir, rainStrength);
+        if (snowFall > 0.001)
+            fogCol = mix(fogCol, luminance(fogCol) * vec3(0.92, 0.99, 1.14) * 1.22, saturate(snowFall * SNOW_FOG) * 0.80);
         float hFall = exp(-max(cameraPosition.y + scenePos.y * 0.5 - 64.0, 0.0) * FOG_HEIGHT_FALLOFF);
-        float density = FOG_BASE * FOG_DENSITY * (1.0 + rainStrength * FOG_RAIN_DENSITY) * hFall;
+        float density = FOG_BASE * FOG_DENSITY * (1.0 + rainStrength * FOG_RAIN_DENSITY + snowFall * SNOW_FOG * 0.90) * hFall;
         float fogAmt = 1.0 - exp(-fogDist * density);
+  #endif
+  #ifdef THUNDER_ACTIVE
+        fogCol += THUNDER_TINT * (thunderSkyGlow(lightningBoltPosition) * 0.35);
   #endif
         fogAmt = min(fogAmt, maxOpacity);
         color = mix(color, fogCol, saturate(max(fogAmt, border)));

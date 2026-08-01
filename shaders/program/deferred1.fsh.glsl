@@ -11,6 +11,7 @@
 #include "/lib/labpbr.glsl"
 #include "/lib/ssr.glsl"
 #include "/lib/wetness.glsl"
+#include "/lib/thunder.glsl"
 
 uniform sampler2D depthtex0;
 uniform sampler2D colortex0;
@@ -46,6 +47,10 @@ uniform int heldItemId, heldItemId2;
 uniform vec3 relativeEyePosition;
 #endif
 uniform float refraxWetBiome;
+uniform float refraxSnowBiome;
+#ifdef THUNDER_ACTIVE
+uniform vec4 lightningBoltPosition;
+#endif
 
 in vec2 uv;
 
@@ -119,6 +124,9 @@ void main() {
         vec3 sky = dimensionSky(dirW, sunDir, fogColor, frameTimeCounter, rainStrength);
         vec4 clouds = texture(colortex13, fsrRegionUV(uv, viewTexel));
         sky = sky * clouds.a + clouds.rgb;
+#ifdef THUNDER_ACTIVE
+        sky += (clouds.rgb * 1.6 + sky * 0.25) * thunderSkyGlow(lightningBoltPosition);
+#endif
 #ifdef VOXY
         vec4 lodLayer = texture(colortex8, uv);
         sky = sky * (1.0 - lodLayer.a) + lodLayer.rgb;
@@ -142,18 +150,39 @@ void main() {
     float sss = extra.r;
     float porosity = extra.g;
     float dither = ignAnim(gl_FragCoord.xy, frameCounter);
+    vec2 ssrJitter = taaJitterUV(vec2(viewWidth, viewHeight), frameCounter);
 
     vec3 geomNV = cross(dFdx(viewPos), dFdy(viewPos));
     geomNV = normalize(dot(geomNV, viewPos) > 0.0 ? -geomNV : geomNV);
     vec3 geomNW = normalize(mat3(gbufferModelViewInverse) * geomNV);
+
+    vec3 worldPos = scenePos + cameraPosition;
+    vec2 fpXZ = fwidth(scenePos.xz);
+    float footprint = max(fpXZ.x, fpXZ.y);
+
+#if defined SNOW_COVER && !defined WORLD_NETHER && !defined WORLD_END
+    float snowCover = 0.0;
+    {
+        float snowAmt = saturate(wetness) * refraxSnowBiome;
+        if (snowAmt > 0.001 && emission < 0.02) {
+            snowCover = snowAccumulation(worldPos, geomNW, lm.y, snowAmt, footprint);
+            if (snowCover > 0.001) {
+                albedo = mix(albedo, SNOW_ALBEDO, snowCover);
+                roughness = mix(roughness, 0.58, snowCover);
+                if (snowCover > 0.5) f0raw = 0.045;
+                N = normalize(mix(N, normalize(mix(geomNW, vec3(0.0, 1.0, 0.0), 0.8)), snowCover * 0.85));
+                sss = max(sss, snowCover * 0.30);
+            }
+        }
+    }
+#endif
 
 #if defined RAIN_PUDDLES && !defined WORLD_NETHER && !defined WORLD_END
     vec3 puddleN = N;
     float puddleCover = 0.0;
     {
         if (wetness * refraxWetBiome > 0.001 && !isMetal(f0raw) && !isMatteFoliageMaterial(roughness, f0raw)) {
-            vec3 worldPos = scenePos + cameraPosition;
-            WetResult wr = computeWetness(worldPos, geomNW.y, lm.y, wetness, refraxWetBiome);
+            WetResult wr = computeWetness(worldPos, geomNW, lm.y, wetness, refraxWetBiome, footprint);
             float notEmit = 1.0 - saturate(emission);
             WetModulation pr = porosityResponse(porosity);
             albedo *= mix(1.0, WETNESS_DARKEN, saturate(max(wr.wet * 0.85, wr.puddle) * notEmit * pr.darken));
@@ -162,7 +191,8 @@ void main() {
             if (puddleCover > 0.001) {
                 vec3 flatPuddleN = normalize(mix(geomNW, vec3(0.0, 1.0, 0.0), 0.9));
                 vec3 rippleN = puddleNormal(worldPos.xz, geomNW, frameTimeCounter, rainStrength);
-                float rippleBlend = puddleCover * smoothstep(0.10, 0.85, rainStrength) * 0.42;
+                float rippleBlend = puddleCover * smoothstep(0.10, 0.85, rainStrength) * 0.42
+                                  * saturate(1.0 - footprint * 8.0);
                 puddleN = normalize(mix(flatPuddleN, rippleN, rippleBlend));
             }
         }
@@ -209,6 +239,9 @@ void main() {
 
     vec3 directShadow = shadow * pomShadow;
     vec3 diffuse = lightCol * NoL * directShadow + (skyLight + minAmb) * ao + blockLight * mix(ao, 1.0, 0.5);
+#ifdef THUNDER_ACTIVE
+    diffuse += thunderLight(scenePos, N, lm.y, lightningBoltPosition) * mix(ao, 1.0, 0.5);
+#endif
 
 #if defined PBR_MATERIALS || REFLECTION_MODE > 0
     bool matteFoliage = isMatteFoliageMaterial(roughness, f0raw);
@@ -224,6 +257,11 @@ void main() {
 
     vec3 color = albedo * diffuse;
     color += albedo * sqrt(albedo) * (emission * EMISSION_STRENGTH * EMISSION_SCALE);
+
+#if defined SNOW_COVER && !defined WORLD_NETHER && !defined WORLD_END
+    if (snowCover > 0.001)
+        color += snowSparkle(worldPos, N, -dirW, lightDir, length(scenePos)) * lightCol * directShadow * snowCover;
+#endif
 
 #ifdef SUBSURFACE_SCATTERING
     if (sss > 0.0) {
@@ -258,7 +296,7 @@ void main() {
         if (ssrReflect) {
             vec3 reflDirV = mat3(gbufferModelView) * reflDirW;
             vec3 hit;
-            float hitS = raymarchSSR(depthtex0, viewPos, reflDirV, gbufferProjection, gbufferProjectionInverse, dither, hit);
+            float hitS = raymarchSSR(depthtex0, viewPos, reflDirV, gbufferProjection, gbufferProjectionInverse, dither, ssrJitter, hit);
             if (hitS > 0.0) {
                 vec3 hitView = screenToView(hit, gbufferProjectionInverse);
                 vec3 hitScene = (gbufferModelViewInverse * vec4(hitView, 1.0)).xyz;
@@ -290,7 +328,7 @@ void main() {
         {
             vec3 reflDirV = mat3(gbufferModelView) * reflDir;
             vec3 hit;
-            float hitS = raymarchSSR(depthtex0, viewPos, reflDirV, gbufferProjection, gbufferProjectionInverse, dither, hit);
+            float hitS = raymarchSSR(depthtex0, viewPos, reflDirV, gbufferProjection, gbufferProjectionInverse, dither, ssrJitter, hit);
             if (hitS > 0.0) {
                 vec3 hitView = screenToView(hit, gbufferProjectionInverse);
                 vec3 hitScene = (gbufferModelViewInverse * vec4(hitView, 1.0)).xyz;
@@ -303,8 +341,9 @@ void main() {
         }
     #endif
   #endif
+        float glintAA = 1.0 / (1.0 + footprint * footprint * 45.0);
         vec3 glint = discLightSpecular(puddleN, Vw, lightDir, SUN_GLINT_RADIUS, 0.015, vec3(0.02))
-                   * lightCol * directShadow * (SUN_GLINT_STRENGTH * 0.6);
+                   * lightCol * directShadow * (SUN_GLINT_STRENGTH * 0.6 * glintAA);
 
         float reflMix = puddleCover * fres;
         color = mix(color, env, reflMix) + glint * puddleCover;
