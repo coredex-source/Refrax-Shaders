@@ -262,6 +262,28 @@ const float drynessHalflife = 800.0;
 #define REFRACTION_INTENSITY 0.25 // [0.0 0.25 0.50 0.75 1.0 1.25 1.50 1.75 2.0]
 #define UNDERWATER_DISTORTION 1.0 // [0.0 0.25 0.50 0.75 1.0 1.25 1.50 1.75 2.0]
 
+#define WATER_CAUSTICS
+#define CAUSTIC_STRENGTH 2.00 // [0.00 0.10 0.20 0.30 0.40 0.50 0.60 0.70 0.80 0.90 1.00 1.20 1.40 1.60 2.00 2.50 3.00]
+#define CAUSTIC_DEPTH 12.0 // [2.0 3.0 4.0 5.0 6.0 8.0 10.0 12.0 14.0 16.0 20.0 24.0 30.0 40.0]
+#define CAUSTIC_CLAMP 4.0
+#define CAUSTIC_STEP 0.40
+#define WATER_IOR 1.333
+#define SHADOW_COLOR_ENCODE 0.25
+#define UNDERWATER_RAYS
+#define WATER_FLOW
+#define FLOW_SPEED 1.00 // [0.00 0.25 0.50 0.75 1.00 1.25 1.50 2.00 3.00]
+#define WATER_RAIN_RIPPLES
+#define RAIN_RIPPLE_STRENGTH 1.00 // [0.00 0.25 0.50 0.75 1.00 1.50 2.00 3.00 4.00 6.00]
+
+#define TRANSLUCENT_DEPTH
+#define GLASS_REFRACTION 1.00 // [0.00 0.25 0.50 0.75 1.00 1.50 2.00 3.00]
+#define GLASS_IOR 1.45 // [1.10 1.20 1.31 1.45 1.52 1.70 2.00]
+#define GLASS_THICKNESS 1.00 // [0.00 0.25 0.50 0.75 1.00 1.25 1.50 2.00]
+
+#define SSR_ACCUMULATION
+#define SSR_ACCUM_BLEND 0.86 // [0.00 0.50 0.60 0.70 0.75 0.80 0.86 0.90 0.94]
+#define SSR_ROUGH_LIMIT 0.50 // [0.20 0.25 0.35 0.50 0.65 0.80]
+
 /* Rain, wetness & puddles (overworld) */
 #define RAIN_PUDDLES
 #define RAIN_PUDDLE_REFLECTIONS 1 //[0 1 2]
@@ -334,5 +356,17 @@ const float drynessHalflife = 800.0;
 
 #define WAVE_SPEED 1.0 // [0.0 0.25 0.50 0.75 1.0 1.25 1.50 2.0 2.5 3.0]
 #define WAVE_AMOUNT 1.0 // [0.0 0.25 0.50 0.75 1.0 1.25 1.50 2.0]
+
+#ifdef SSR_ACCUMULATION
+  #if REFLECTION_MODE > 0 || RAIN_PUDDLE_REFLECTIONS == 2
+    #define SSR_ACCUM_ACTIVE
+  #endif
+#endif
+
+#ifdef WATER_CAUSTICS
+  #if !defined WORLD_NETHER && !defined WORLD_END
+    #define CAUSTICS_ACTIVE
+  #endif
+#endif
 
 #endif

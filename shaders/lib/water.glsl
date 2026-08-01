@@ -5,8 +5,15 @@
 #include "/lib/settings.glsl"
 #include "/lib/common.glsl"
 
-float waterWaveField(sampler2D noiseTex, vec2 p, float t, float detailFade) {
+float waterDetailField(sampler2D noiseTex, vec2 p, float t) {
     const mat2 turn = mat2(0.8192, 0.5736, -0.5736, 0.8192);
+    vec2 wind = vec2(0.91, 0.42);
+    vec2 detailUV = (turn * p) * vec2(0.021, 0.018) + vec2(-wind.y, wind.x) * (t * 0.0085);
+    float detail = texture(noiseTex, detailUV).r;
+    return detail * detail * (3.0 - 2.0 * detail);
+}
+
+float waterWaveField(sampler2D noiseTex, vec2 p, float t, float detailFade) {
     vec2 wind = vec2(0.91, 0.42);
 
     vec2 broadUV = p * vec2(0.0054, 0.0062) - wind * (t * 0.0032);
@@ -15,10 +22,7 @@ float waterWaveField(sampler2D noiseTex, vec2 p, float t, float detailFade) {
 #if PERF_SAMPLE_DEN >= 6
     return broad;
 #else
-    vec2 detailUV = (turn * p) * vec2(0.021, 0.018) + vec2(-wind.y, wind.x) * (t * 0.0085);
-    float detail = texture(noiseTex, detailUV).r;
-    detail = detail * detail * (3.0 - 2.0 * detail);
-    return mix(broad, detail, 0.10 * detailFade);
+    return mix(broad, waterDetailField(noiseTex, p, t), 0.10 * detailFade);
 #endif
 }
 
@@ -26,12 +30,49 @@ vec3 waterReflectNormal(vec3 N) {
     return normalize(mix(N, vec3(0.0, 1.0, 0.0), WATER_REFLECT_FLATTEN));
 }
 
-vec3 waterNormal(sampler2D noiseTex, vec2 p, float t, float viewDot, float sky, float rain, float viewDistance) {
+vec3 waterNormalFlow(sampler2D noiseTex, vec2 p, vec2 drift, float t, float viewDot, float sky, float rain, float viewDistance, float flow) {
 #ifndef WATER_WAVES
     return vec3(0.0, 1.0, 0.0);
 #else
     float wt = t * WAVE_SPEED;
+    vec2 q = p - drift;
     float detailFade = 1.0 - smoothstep(64.0, 192.0, viewDistance);
+    const float offset = 0.18;
+    float left = waterWaveField(noiseTex, q - vec2(offset, 0.0), wt, detailFade);
+    float right = waterWaveField(noiseTex, q + vec2(offset, 0.0), wt, detailFade);
+    float down = waterWaveField(noiseTex, q - vec2(0.0, offset), wt, detailFade);
+    float up = waterWaveField(noiseTex, q + vec2(0.0, offset), wt, detailFade);
+
+    vec2 slope = vec2(left - right, down - up) / (2.0 * offset);
+    float exposure = mix(0.78, 1.0, sky);
+    float weather = 1.0 + rain * 0.18;
+    float grazingStability = smoothstep(0.025, 0.15, viewDot);
+
+    slope *= 3.0 * WATER_WAVE_INTENSITY * exposure * weather * grazingStability * (1.0 + flow * 1.6);
+    slope = clamp(slope, vec2(-0.24), vec2(0.24));
+    return normalize(vec3(-slope.x, 1.0, -slope.y));
+#endif
+}
+
+vec3 waterNormal(sampler2D noiseTex, vec2 p, float t, float viewDot, float sky, float rain, float viewDistance) {
+    return waterNormalFlow(noiseTex, p, vec2(0.0), t, viewDot, sky, rain, viewDistance, 0.0);
+}
+
+vec3 waterfallNormal(sampler2D noiseTex, vec3 worldPos, vec3 geomN, float t, float sky, float rain, float viewDistance) {
+#ifndef WATER_WAVES
+    return geomN;
+#else
+    vec3 tangent = cross(vec3(0.0, 1.0, 0.0), geomN);
+    float tl = length(tangent);
+    if (tl < 1e-3) return geomN;
+    tangent /= tl;
+    vec3 bitangent = cross(geomN, tangent);
+
+    float wt = t * WAVE_SPEED;
+    vec2 p = vec2(dot(worldPos, tangent), dot(worldPos, bitangent) * 0.26) * 2.6;
+    p.y += wt * (2.4 * FLOW_SPEED);
+
+    float detailFade = 1.0 - smoothstep(32.0, 96.0, viewDistance);
     const float offset = 0.18;
     float left = waterWaveField(noiseTex, p - vec2(offset, 0.0), wt, detailFade);
     float right = waterWaveField(noiseTex, p + vec2(offset, 0.0), wt, detailFade);
@@ -39,13 +80,9 @@ vec3 waterNormal(sampler2D noiseTex, vec2 p, float t, float viewDot, float sky, 
     float up = waterWaveField(noiseTex, p + vec2(0.0, offset), wt, detailFade);
 
     vec2 slope = vec2(left - right, down - up) / (2.0 * offset);
-    float exposure = mix(0.78, 1.0, sky);
-    float weather = 1.0 + rain * 0.18;
-    float grazingStability = smoothstep(0.025, 0.15, viewDot);
-
-    slope *= 3.0 * WATER_WAVE_INTENSITY * exposure * weather * grazingStability;
-    slope = clamp(slope, vec2(-0.24), vec2(0.24));
-    return normalize(vec3(-slope.x, 1.0, -slope.y));
+    slope *= 3.0 * WATER_WAVE_INTENSITY * mix(0.85, 1.0, sky) * (1.0 + rain * 0.25) * 1.4;
+    slope = clamp(slope, vec2(-0.30), vec2(0.30));
+    return normalize(geomN - tangent * slope.x - bitangent * slope.y);
 #endif
 }
 

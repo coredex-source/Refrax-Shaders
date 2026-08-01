@@ -211,6 +211,35 @@ option.SUN_GLINT_RADIUS.comment=Angular radius used for sun highlights on water 
 option.SUN_GLINT_STRENGTH=Water Sun Glint
 option.SUN_GLINT_STRENGTH.comment=HDR intensity of the direct sun reflection on water.
 
+option.WATER_CAUSTICS=Caustics
+option.WATER_CAUSTICS.comment=Focused light patterns cast onto anything the sun reaches through water.
+option.CAUSTIC_STRENGTH=Caustic Contrast
+option.CAUSTIC_STRENGTH.comment=Basically changes the strength of the caustics.
+option.CAUSTIC_DEPTH=Caustic Focus Depth
+option.CAUSTIC_DEPTH.comment=How far the refracted light is assumed to travel before it lands.
+option.UNDERWATER_RAYS=Underwater Light Shafts
+option.UNDERWATER_RAYS.comment=Banded sunbeams below the surface.
+option.WATER_FLOW=Flowing Water
+option.FLOW_SPEED=Flow Speed
+option.WATER_RAIN_RIPPLES=Rain Ripples on Water
+option.WATER_RAIN_RIPPLES.comment=Raindrop impact rings on exposed water.
+option.RAIN_RIPPLE_STRENGTH=Rain Ripple Strength
+
+option.TRANSLUCENT_DEPTH=Glass & Ice Depth
+option.TRANSLUCENT_DEPTH.comment=Treats stained glass and ice as volumes rather than flat sheets.
+option.GLASS_REFRACTION=Glass Refraction
+option.GLASS_IOR=Glass Index of Refraction
+option.GLASS_IOR.comment=1.31 is ice, 1.52 is window glass.
+option.GLASS_THICKNESS=Glass Tint Depth
+option.GLASS_THICKNESS.comment=How much extra tint a grazing view through glass or ice picks up.
+
+option.SSR_ACCUMULATION=Reflection Accumulation
+option.SSR_ACCUMULATION.comment=Averages screen-space reflections over several frames.
+option.SSR_ACCUM_BLEND=Accumulation Blend
+option.SSR_ACCUM_BLEND.comment=Weight given to previous frames.
+option.SSR_ROUGH_LIMIT=Reflection Roughness Limit
+option.SSR_ROUGH_LIMIT.comment=Roughest non-metal surface that still gets a traced reflection.
+
 option.RAIN_PUDDLES=Rain Puddles
 option.RAIN_PUDDLES.comment=Darkens exposed ground when wet and forms reflective puddles on upward-facing surfaces.
 option.RAIN_PUDDLE_REFLECTIONS=Puddle Reflections

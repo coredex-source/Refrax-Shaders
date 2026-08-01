@@ -5,6 +5,22 @@
 #include "/lib/settings.glsl"
 #include "/lib/common.glsl"
 
+vec2 ssrLobeRandom(sampler2D noiseTex, vec2 px, int frame) {
+    const vec2 r2 = vec2(0.7548776662466927, 0.5698402909980532);
+    float b = texelFetch(noiseTex, ivec2(px) & 255, 0).a;
+    return fract(vec2(b, fract(b * 91.7 + 0.37)) + r2 * float(frame % 64));
+}
+
+vec3 ssrLobeDir(vec3 R, vec3 N, float roughness, vec2 xi) {
+    float a = roughness * roughness;
+    if (a < 5e-4) return R;
+    vec3 tangent = normalize(cross(abs(R.y) < 0.95 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0), R));
+    vec3 bitangent = cross(R, tangent);
+    float phi = xi.x * 2.0 * PI;
+    float r = min(a * sqrt(xi.y / max(1.0 - xi.y, 1e-3)), 0.30);
+    vec3 dir = normalize(R + (tangent * cos(phi) + bitangent * sin(phi)) * r);
+    return dot(dir, N) > 0.02 ? dir : R;
+}
 
 float raymarchSSRCustom(sampler2D depthTex, vec3 viewPos, vec3 reflDirView, mat4 proj, mat4 projInv, float dither, vec2 jitterUV, int steps, int refineSteps, float baseStep, float stepGrowth, out vec3 hitScreen) {
     hitScreen = vec3(0.0);

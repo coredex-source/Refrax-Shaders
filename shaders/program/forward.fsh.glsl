@@ -14,6 +14,14 @@
 #include "/lib/dh.glsl"
 #include "/lib/thunder.glsl"
 
+#include "/lib/wetness.glsl"
+
+#ifdef WATER_RAIN_RIPPLES
+  #if defined WATER && !defined WORLD_NETHER && !defined WORLD_END
+    #define WATER_RIPPLES_ACTIVE
+  #endif
+#endif
+
 uniform sampler2D gtexture;
 uniform sampler2D lightmap;
 uniform sampler2D noisetex;
@@ -50,6 +58,9 @@ uniform vec4 entityColor;
 #endif
 #ifdef THUNDER_ACTIVE
 uniform vec4 lightningBoltPosition;
+#endif
+#ifdef WATER_RIPPLES_ACTIVE
+uniform float refraxSnowBiome;
 #endif
 
 in vec2 uv;
@@ -204,8 +215,42 @@ void main() {
     vec3 worldPos = scenePos + cameraPosition;
     if (realWater && N.y > 0.5) {
         float vDot = abs(dot(N, normalize(-scenePos)));
-        N = waterNormal(noisetex, worldPos.xz, frameTimeCounter, vDot, lmcoord.y, rainStrength, length(scenePos));
+        float waterDist = length(scenePos);
+        vec2 drift = vec2(0.0);
+        float flow = 0.0;
+    #ifdef WATER_FLOW
+        {
+            vec3 surfN = normalize(cross(dFdx(scenePos), dFdy(scenePos)));
+            if (surfN.y < 0.0) surfN = -surfN;
+            vec2 grad = surfN.xz / max(surfN.y, 0.25);
+            flow = min(length(grad), 0.9);
+            if (flow > 0.02)
+                drift = grad * (frameTimeCounter * WAVE_SPEED * FLOW_SPEED * 1.35);
+        }
+    #endif
+        N = waterNormalFlow(noisetex, worldPos.xz, drift, frameTimeCounter, vDot, lmcoord.y, rainStrength, waterDist, flow);
+    #ifdef WATER_RIPPLES_ACTIVE
+        {
+            float ripple = (1.0 - smoothstep(16.0, 40.0, waterDist))
+                         * smoothstep(0.35, 0.85, lmcoord.y)
+                         * smoothstep(0.05, 0.60, rainStrength)
+                         * (1.0 - refraxSnowBiome) * RAIN_RIPPLE_STRENGTH;
+            if (ripple > 0.002) {
+                const float e = 0.07;
+                float h0 = puddleRippleHeight(worldPos.xz, frameTimeCounter);
+                float hx = puddleRippleHeight(worldPos.xz + vec2(e, 0.0), frameTimeCounter);
+                float hz = puddleRippleHeight(worldPos.xz + vec2(0.0, e), frameTimeCounter);
+                vec2 slope = vec2(h0 - hx, h0 - hz) / e;
+                N = normalize(N + vec3(slope.x, 0.0, slope.y) * (0.005 * ripple));
+            }
+        }
+    #endif
     }
+  #ifdef WATER_FLOW
+    else if (realWater && abs(N.y) < 0.5) {
+        N = waterfallNormal(noisetex, worldPos, N, frameTimeCounter, lmcoord.y, rainStrength, length(scenePos));
+    }
+  #endif
   #endif
 
     float NoL = saturate(dot(N, lightDir));
@@ -351,6 +396,12 @@ void main() {
 #endif
         outWaterData = vec4(N, 2.0);
     } else {
+      #ifdef TRANSLUCENT_DEPTH
+        {
+            float path = mix(1.0, 1.0 / max(abs(dot(viewDirW, N)), 0.14), GLASS_THICKNESS);
+            alpha = 1.0 - pow(max(1.0 - alpha, 1e-4), path);
+        }
+      #endif
       #if defined PBR_MATERIALS && !defined PARTICLE
         float glassSmooth = 1.0 - sqrt(saturate(mat.roughness));
         vec3 reflW = surfaceFresnel * (0.8 + 4.5 * glassSmooth * glassSmooth);
@@ -398,7 +449,7 @@ void main() {
             alpha = saturate(max(texA.a, texB.a) * (0.68 + 0.26 * veil));
             alpha *= smoothstep(0.08, 0.55, length(scenePos));
         }
-        outWaterData = vec4(N, blockId == 10018 ? 3.0 : 0.0);
+        outWaterData = vec4(N, blockId == 10018 ? 3.0 : 1.5);
     }
   #endif
 

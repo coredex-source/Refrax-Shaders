@@ -11,5 +11,5 @@ void main() {
     hue = pow(hue, vec3(1.8));
     hue = mix(vec3(1.0), hue, 0.90);
     float w = SHADOW_TINT * smoothstep(0.0, 0.4, vcolor.a);
-    outColor0 = vec4(mix(vec3(1.0), hue, w), 1.0);
+    outColor0 = vec4(mix(vec3(1.0), hue, w) * SHADOW_COLOR_ENCODE, 1.0);
 }

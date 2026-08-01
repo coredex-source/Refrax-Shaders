@@ -13,6 +13,7 @@
 #include "/lib/wetness.glsl"
 #include "/lib/thunder.glsl"
 
+uniform sampler2D noisetex;
 uniform sampler2D depthtex0;
 uniform sampler2D colortex0;
 uniform sampler2D colortex1;
@@ -22,6 +23,9 @@ uniform sampler2D colortex13;
 uniform sampler2D colortex5;
 uniform sampler2D colortex6;
 uniform sampler2D colortex10;
+#ifdef SSR_ACCUM_ACTIVE
+uniform sampler2D colortex15;
+#endif
 #ifdef VOXY
 uniform sampler2D colortex8;
 #endif
@@ -55,8 +59,14 @@ uniform vec4 lightningBoltPosition;
 
 in vec2 uv;
 
+#ifdef SSR_ACCUM_ACTIVE
+/* RENDERTARGETS: 0,15 */
+layout(location = 0) out vec4 outColor;
+layout(location = 1) out vec4 outSSR;
+#else
 /* RENDERTARGETS: 0 */
 layout(location = 0) out vec4 outColor;
+#endif
 
 #if MC_VERSION < 260100
 uniform sampler2D colortex7;
@@ -70,6 +80,35 @@ vec4 lineOverlay(vec4 color) {
   #define REFRAX_GLINT_BUFFER
 uniform sampler2D colortex7;
   #endif
+#endif
+
+#if REFLECTION_MODE > 0 || RAIN_PUDDLE_REFLECTIONS == 2
+vec3 ssrReflection(vec3 viewPos, vec3 reflDirW, vec3 fallback, float dither, vec2 ssrJitter, vec2 viewTexel) {
+    vec3 reflDirV = mat3(gbufferModelView) * reflDirW;
+    vec3 hit;
+    float hitS = raymarchSSR(depthtex0, viewPos, reflDirV, gbufferProjection, gbufferProjectionInverse, dither, ssrJitter, hit);
+    if (hitS <= 0.0) return fallback;
+    vec3 hitView = screenToView(hit, gbufferProjectionInverse);
+    vec3 hitScene = (gbufferModelViewInverse * vec4(hitView, 1.0)).xyz;
+    vec3 prevUV = reprojectScene(hitScene, gbufferPreviousModelView, gbufferPreviousProjection, cameraPosition, previousCameraPosition);
+    if (clamp(prevUV.xy, 0.0, 1.0) != prevUV.xy) return fallback;
+    vec4 hist = texture(colortex5, historyUV(prevUV.xy, viewTexel));
+    return mix(fallback, hist.rgb, hitS * saturate(hist.a));
+}
+#endif
+
+#ifdef SSR_ACCUM_ACTIVE
+vec3 ssrAccumulate(vec3 current, vec3 scenePos, vec2 viewTexel) {
+    vec3 prevUV = reprojectScene(scenePos, gbufferPreviousModelView, gbufferPreviousProjection, cameraPosition, previousCameraPosition);
+    if (clamp(prevUV.xy, 0.0, 1.0) != prevUV.xy) return current;
+    vec4 hist = texture(colortex15, historyUV(prevUV.xy, viewTexel));
+    if (hist.a <= 0.0 || hist.a > 1e4 || any(isnan(hist))) return current;
+    float prevKey = length(scenePos + cameraPosition - previousCameraPosition);
+    if (abs(hist.a - prevKey) > prevKey * 0.06 + 0.05) return current;
+    vec2 border = min(prevUV.xy, 1.0 - prevUV.xy);
+    float edge = saturate(min(border.x, border.y) * 24.0);
+    return mix(current, clamp(hist.rgb, vec3(0.0), vec3(64.0)), SSR_ACCUM_BLEND * edge);
+}
 #endif
 
 vec3 blockLightAt(vec3 pos, vec3 N, float lmBlock) {
@@ -101,6 +140,9 @@ vec3 blockLightAt(vec3 pos, vec3 N, float lmBlock) {
 
 void main() {
     vec2 viewTexel = 1.0 / vec2(viewWidth, viewHeight);
+#ifdef SSR_ACCUM_ACTIVE
+    outSSR = vec4(0.0, 0.0, 0.0, -1.0);
+#endif
     vec4 prev = texture(colortex0, uv);
     if (prev.a > 0.15 && prev.a < 0.85) { outColor = lineOverlay(prev); return; }
 
@@ -292,7 +334,7 @@ void main() {
     float reflWeight = metal ? mix(0.45, 1.0, 1.0 - saturate(roughness))
                              : pow(1.0 - saturate(roughness), 2.0);
     bool envReflect = !matteFoliage && reflWeight > 0.002;
-    bool ssrReflect = envReflect && (metal || roughness < 0.35);
+    bool ssrReflect = envReflect && (metal || roughness < SSR_ROUGH_LIMIT);
     if (envReflect) {
         vec3 reflDirW = reflect(dirW, N);
     #if defined WORLD_NETHER || defined WORLD_END
@@ -302,18 +344,14 @@ void main() {
     #endif
         vec3 refl = dimensionSkyReflection(reflDirW, sunDir, fogColor, frameTimeCounter, rainStrength) * skyVis;
         if (ssrReflect) {
-            vec3 reflDirV = mat3(gbufferModelView) * reflDirW;
-            vec3 hit;
-            float hitS = raymarchSSR(depthtex0, viewPos, reflDirV, gbufferProjection, gbufferProjectionInverse, dither, ssrJitter, hit);
-            if (hitS > 0.0) {
-                vec3 hitView = screenToView(hit, gbufferProjectionInverse);
-                vec3 hitScene = (gbufferModelViewInverse * vec4(hitView, 1.0)).xyz;
-                vec3 prevUV = reprojectScene(hitScene, gbufferPreviousModelView, gbufferPreviousProjection, cameraPosition, previousCameraPosition);
-                if (clamp(prevUV.xy, 0.0, 1.0) == prevUV.xy) {
-                    vec4 hist = texture(colortex5, historyUV(prevUV.xy, viewTexel));
-                    refl = mix(refl, hist.rgb, hitS * saturate(hist.a));
-                }
-            }
+        #ifdef SSR_ACCUM_ACTIVE
+            reflDirW = ssrLobeDir(reflDirW, N, roughness, ssrLobeRandom(noisetex, gl_FragCoord.xy, frameCounter));
+        #endif
+            refl = ssrReflection(viewPos, reflDirW, refl, dither, ssrJitter, viewTexel);
+        #ifdef SSR_ACCUM_ACTIVE
+            refl = ssrAccumulate(refl, scenePos, viewTexel);
+            outSSR = vec4(refl, length(scenePos));
+        #endif
         }
         color += refl * F * reflWeight;
     }
@@ -333,20 +371,11 @@ void main() {
   #else
         vec3 env = dimensionSkyReflection(reflDir, sunDir, fogColor, frameTimeCounter, rainStrength) * skyVis;
     #if RAIN_PUDDLE_REFLECTIONS == 2
-        {
-            vec3 reflDirV = mat3(gbufferModelView) * reflDir;
-            vec3 hit;
-            float hitS = raymarchSSR(depthtex0, viewPos, reflDirV, gbufferProjection, gbufferProjectionInverse, dither, ssrJitter, hit);
-            if (hitS > 0.0) {
-                vec3 hitView = screenToView(hit, gbufferProjectionInverse);
-                vec3 hitScene = (gbufferModelViewInverse * vec4(hitView, 1.0)).xyz;
-                vec3 prevUV = reprojectScene(hitScene, gbufferPreviousModelView, gbufferPreviousProjection, cameraPosition, previousCameraPosition);
-                if (clamp(prevUV.xy, 0.0, 1.0) == prevUV.xy) {
-                    vec4 hist = texture(colortex5, historyUV(prevUV.xy, viewTexel));
-                    env = mix(env, hist.rgb, hitS * saturate(hist.a));
-                }
-            }
-        }
+        env = ssrReflection(viewPos, reflDir, env, dither, ssrJitter, viewTexel);
+      #ifdef SSR_ACCUM_ACTIVE
+        env = ssrAccumulate(env, scenePos, viewTexel);
+        outSSR = vec4(env, length(scenePos));
+      #endif
     #endif
   #endif
         float glintAA = 1.0 / (1.0 + footprint * footprint * 45.0);

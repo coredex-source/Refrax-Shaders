@@ -18,6 +18,8 @@ in vec3 at_midBlock;
 
 out vec2 uv;
 out vec4 vcolor;
+out vec3 scenePos;
+flat out int blockId;
 
 #ifdef COLORED_LIGHTING
 writeonly uniform image3D voxelImg;
@@ -27,9 +29,10 @@ void main() {
     uv = vec2(gl_TextureMatrix[0] * gl_MultiTexCoord0);
     vcolor = gl_Color;
     int id = int(mc_Entity.x + 0.5);
+    blockId = id;
 
     vec4 viewPos = gl_ModelViewMatrix * gl_Vertex;
-    vec3 scenePos = (shadowModelViewInverse * viewPos).xyz;
+    scenePos = (shadowModelViewInverse * viewPos).xyz;
 
 #ifdef COLORED_LIGHTING
     bool voxelStage =

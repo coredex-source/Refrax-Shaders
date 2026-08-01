@@ -29,14 +29,19 @@ const int colortex11Format = R8;
 const int colortex12Format = R16F;
 const int colortex13Format = RGBA16F;
 const int colortex14Format = R8;
+const int colortex15Format = RGBA16F;
 */
 const bool colortex5Clear = false;
 const bool colortex12Clear = false;
 const bool colortex13Clear = false;
 const bool colortex14Clear = false;
+#ifdef SSR_ACCUM_ACTIVE
+const bool colortex15Clear = false;
+#endif
 const bool colortex9Clear = true;
 const vec4 colortex9ClearColor = vec4(0.0, 0.0, 0.0, 0.0);
 
+uniform sampler2D noisetex;
 uniform sampler2D colortex0;
 uniform sampler2D colortex2;
 uniform sampler2D colortex11;
@@ -50,7 +55,7 @@ uniform sampler2D depthtex0, depthtex1;
   #endif
 #endif
 uniform sampler2D shadowtex0, shadowtex1, shadowcolor0;
-uniform mat4 gbufferModelViewInverse, gbufferProjectionInverse;
+uniform mat4 gbufferModelViewInverse, gbufferProjection, gbufferProjectionInverse;
 uniform mat4 shadowModelView, shadowProjection;
 uniform vec3 cameraPosition;
 uniform vec3 sunPosition;
@@ -89,10 +94,10 @@ void main() {
 #endif
 
     vec4 waterData = texture(colortex2, suv);
-    bool waterMask = waterData.a > 1.5 && waterData.a < 2.5;
+    bool waterMask = waterData.a > 1.8 && waterData.a < 2.5;
 #ifdef VOXY
     vec4 voxyWaterData = texture(colortex9, suv);
-    bool voxyWaterMask = voxyWaterData.a > 1.5 && voxyWaterData.a < 2.5;
+    bool voxyWaterMask = voxyWaterData.a > 1.8 && voxyWaterData.a < 2.5;
     if (voxyWaterMask) waterData = voxyWaterData;
     waterMask = waterMask || voxyWaterMask;
 #endif
@@ -126,6 +131,29 @@ void main() {
         lodDepth0 = texture(lodDepthTex0, suv).r;
 #endif
     }
+#ifdef TRANSLUCENT_DEPTH
+    else if (waterData.a > 1.3 && waterData.a < 1.8 && depth1 > depth0) {
+        vec3 frontView = screenToView(vec3(uv, depth0), gbufferProjectionInverse);
+        vec3 backView = screenToView(vec3(uv, depth1), gbufferProjectionInverse);
+        float slab = min(length(backView) - length(frontView), 1.0);
+        if (slab > 0.02) {
+            vec3 nView = normalize(transpose(mat3(gbufferModelViewInverse)) * normalize(waterData.rgb));
+            vec3 incident = normalize(frontView);
+            nView = faceforward(nView, incident, nView);
+            vec3 bent = refract(incident, nView, 1.0 / GLASS_IOR);
+            if (dot(bent, bent) > 0.0) {
+                vec2 offset = viewToScreen(frontView + bent * slab, gbufferProjection).xy - uv;
+                vec2 ruv = uv + offset * GLASS_REFRACTION;
+                if (clamp(ruv, vec2(0.001), vec2(0.999)) == ruv && texture(depthtex1, ruv).r > depth0)
+                    suv = ruv;
+            }
+        }
+        depth0 = texture(depthtex0, suv).r;
+  #ifdef LOD_ACTIVE
+        lodDepth0 = texture(lodDepthTex0, suv).r;
+  #endif
+    }
+#endif
     if (isEyeInWater == 1) {
         float eyeSkyPre = float(eyeBrightnessSmooth.y) / 240.0;
 
@@ -183,6 +211,10 @@ void main() {
 #endif
             float dt = maxD / float(steps);
             vec3 accum = vec3(0.0);
+#ifdef UNDERWATER_RAYS
+            bool submergedRays = isEyeInWater == 1;
+            float rayTime = frameTimeCounter * WAVE_SPEED;
+#endif
             for (int i = 0; i < steps; i++) {
                 vec3 p = dirW * (dt * (float(i) + dither));
                 vec4 sclip = shadowProjection * (shadowModelView * vec4(p, 1.0));
@@ -190,10 +222,22 @@ void main() {
                 float s = 1.0;
                 if (clamp(sp.xy, 0.0, 1.0) == sp.xy)
                     s = step(sp.z - 0.0004, texture(shadowtex1, sp.xy).r);
+#ifdef UNDERWATER_RAYS
+                if (submergedRays)
+                    s *= 0.30 + 1.55 * waterDetailField(noisetex,
+                        (cameraPosition + p).xz + lightDir.xz * 5.0, rayTime);
+#endif
                 accum += vec3(s);
             }
-            float phase = pow(saturate(dot(dirW, lightDir)), 5.0) * 0.75 + 0.12;
+            float lobe = saturate(dot(dirW, lightDir));
+            float phase = pow(lobe, 5.0) * 0.75 + 0.12;
             float media = isEyeInWater == 1 ? 0.05 : 0.006 * (1.0 + rainStrength * 2.0) * mix(1.0, biome.haze, 0.6);
+#ifdef UNDERWATER_RAYS
+            if (submergedRays) {
+                phase = pow(lobe, 9.0) * 1.30 + 0.10;
+                media *= 0.30 + 0.70 * (float(eyeBrightnessSmooth.y) / 240.0);
+            }
+#endif
             color += (accum / float(steps)) * vlCol * phase * media * maxD * VL_STRENGTH * (isEyeInWater == 1 ? WATER_COLOR * 3.0 : vec3(1.0));
         }
     }
@@ -238,13 +282,8 @@ void main() {
         vec3 ambient = skyAmbient(sunDir, rainStrength) * (0.06 + eyeSky * 0.24) + vec3(0.002, 0.004, 0.007);
         vec3 scatter = fogCol * (0.18 + upView * eyeSky * 0.18 + lightBeam * 0.54) + ambient * 0.10;
 
-        float shallow = (1.0 - skyMask) * (1.0 - saturate(d / 30.0)) * eyeSky * (1.0 - rainStrength * 0.45);
-        float caustic = sin(scenePos.x * 0.74 + frameTimeCounter * 1.4) * sin(scenePos.z * 0.53 - frameTimeCounter * 1.1);
-        caustic = pow(saturate(caustic * 0.5 + 0.5), 6.0) * shallow;
-
         float localContrast = mix(0.56, 0.86, eyeSky) * (1.0 - fogAmt * 0.18);
         color = color * transmittance * vec3(0.54, 0.68, 1.02) * localContrast + scatter * (fogAmt * 0.40);
-        color += fogCol * caustic * 0.055;
         if (skyMask > 0.5) color = mix(color, fogCol * (0.26 + lightBeam * 0.38 + upView * eyeSky * 0.12), 0.46);
     } else if (skyMask < 0.5) {
 #ifdef LOD_ACTIVE

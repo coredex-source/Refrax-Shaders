@@ -53,9 +53,11 @@ vec3 getShadow(vec3 scenePos, vec3 worldNormal, float NoL, float dither, mat4 sh
     }
 #endif
 
-#ifdef COLORED_SHADOWS
+#if defined COLORED_SHADOWS || defined CAUSTICS_ACTIVE
     vec3 spC = distortShadowClip(clip.xyz / clip.w) * 0.5 + 0.5;
-    vec3 tint = clamp(spC.xy, 0.0, 1.0) == spC.xy ? texture(scol0, spC.xy).rgb : vec3(1.0);
+    vec3 tint = clamp(spC.xy, 0.0, 1.0) == spC.xy
+              ? texture(scol0, spC.xy).rgb / SHADOW_COLOR_ENCODE
+              : vec3(1.0);
 #endif
 
     vec3 sum = vec3(0.0);
@@ -69,7 +71,7 @@ vec3 getShadow(vec3 scenePos, vec3 worldNormal, float NoL, float dither, mat4 sh
         if (clamp(sp.xy, 0.0, 1.0) != sp.xy) { sum += vec3(1.0); continue; }
         float z = sp.z - 0.00035;
         float s1 = step(z, texture(stex1, sp.xy).r);
-    #ifdef COLORED_SHADOWS
+    #if defined COLORED_SHADOWS || defined CAUSTICS_ACTIVE
         float s0 = step(z, texture(stex0, sp.xy).r);
         sum += s1 * mix(tint, vec3(1.0), s0);
     #else
