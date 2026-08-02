@@ -31,6 +31,16 @@ float linearizeDepth(float d, float near, float far) {
 }
 
 
+float packSurface(float emission, float dynamicFlag) {
+    return dynamicFlag > 0.5 ? -1.0 - emission : emission;
+}
+float surfaceEmission(float surfaceTag) {
+    return surfaceTag < 0.0 ? -1.0 - surfaceTag : (surfaceTag > 1.0 ? 0.0 : surfaceTag);
+}
+float surfaceDynamic(float surfaceTag) {
+    return surfaceTag < 0.0 ? 1.0 : 0.0;
+}
+
 vec3 reprojectScene(vec3 scenePos, mat4 prevMV, mat4 prevProj, vec3 camPos, vec3 prevCamPos) {
     vec3 prevScene = scenePos + camPos - prevCamPos;
     vec4 clip = prevProj * (prevMV * vec4(prevScene, 1.0));

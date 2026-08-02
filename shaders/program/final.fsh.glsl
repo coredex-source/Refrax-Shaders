@@ -3,7 +3,7 @@
 #include "/lib/settings.glsl"
 #include "/lib/common.glsl"
 #include "/lib/post.glsl"
-#include "/lib/bloom.glsl"
+#include "/lib/lens.glsl"
 #if SHARPEN_MODE == 1
 #include "/lib/cas.glsl"
 #elif SHARPEN_MODE == 2
@@ -11,13 +11,10 @@
 #endif
 
 uniform sampler2D colortex0;
-uniform sampler2D colortex4;
-#ifdef AUTO_EXPOSURE
-uniform sampler2D colortex12;
-#endif
 uniform float viewWidth, viewHeight;
-uniform ivec2 eyeBrightnessSmooth;
+#ifdef FILM_GRAIN
 uniform int frameCounter;
+#endif
 #ifdef ATAA
 uniform sampler2D depthtex0;
 uniform float near, far;
@@ -27,50 +24,28 @@ in vec2 uv;
 
 layout(location = 0) out vec4 outColor;
 
-vec3 bloomSample(vec2 coord) {
-    vec2 px = 1.0 / vec2(viewWidth, viewHeight);
-    vec3 bloom = vec3(0.0);
-    for (int i = 0; i < BLOOM_LEVELS; i++) {
-        float s = bloomLevelScale(i);
-        vec2 pad = 0.75 * px / s;
-        vec2 uvT = vec2(0.0, bloomLevelY(i)) + clamp(coord, pad, 1.0 - pad) * s;
-        bloom += texture(colortex4, uvT).rgb;
-    }
-    return bloom / float(BLOOM_LEVELS);
-}
-
-vec3 processPixel(vec2 coord, vec3 bloom, float exposure) {
-    vec3 hdr = texture(colortex0, coord).rgb;
-#ifdef BLOOM
-    hdr = mix(hdr, bloom, saturate(BLOOM_STRENGTH * CALM_BLOOM * 0.12));
-#endif
-    hdr *= exposure;
-    vec3 ldr = applyTonemap(hdr);
-    return colorGrade(ldr);
-}
+vec3 gradedAt(vec2 coord) { return texture(colortex0, coord).rgb; }
 
 #ifdef MORPH_AA
-float aaLuma(vec2 c, vec3 bloom, float exposure) {
-    return luminance(processPixel(c, bloom, exposure));
-}
+float aaLuma(vec2 c) { return luminance(gradedAt(c)); }
 
-float aaEdgeLength(vec2 uv, vec2 along, vec2 crossN, float refDelta, vec3 bloom, float exposure) {
+float aaEdgeLength(vec2 uv, vec2 along, vec2 crossN, float refDelta) {
     float dist = 0.0;
     for (int i = 1; i <= SMAA_SEARCH_STEPS; i++) {
         vec2 c = uv + along * float(i);
-        float d = abs(aaLuma(c, bloom, exposure) - aaLuma(c + crossN, bloom, exposure));
+        float d = abs(aaLuma(c) - aaLuma(c + crossN));
         if (d < refDelta * 0.5) break;
         dist += 1.0;
     }
     return dist;
 }
 
-vec3 morphAA(vec2 uv, vec3 color, vec2 px, vec3 bloom, float exposure) {
+vec3 morphAA(vec2 uv, vec3 color, vec2 px) {
     float lC = luminance(color);
-    float lL = aaLuma(uv + vec2(-px.x, 0.0), bloom, exposure);
-    float lR = aaLuma(uv + vec2( px.x, 0.0), bloom, exposure);
-    float lU = aaLuma(uv + vec2(0.0, -px.y), bloom, exposure);
-    float lD = aaLuma(uv + vec2(0.0, px.y), bloom, exposure);
+    float lL = aaLuma(uv + vec2(-px.x, 0.0));
+    float lR = aaLuma(uv + vec2( px.x, 0.0));
+    float lU = aaLuma(uv + vec2(0.0, -px.y));
+    float lD = aaLuma(uv + vec2(0.0, px.y));
 
     float dH = abs(lR - lL);
     float dV = abs(lD - lU);
@@ -88,12 +63,11 @@ vec3 morphAA(vec2 uv, vec3 color, vec2 px, vec3 bloom, float exposure) {
         crossN = vec2(px.x, 0.0) * (abs(lR - lC) >= abs(lL - lC) ? 1.0 : -1.0);
     }
 
-    float total = aaEdgeLength(uv, -along, crossN, refDelta, bloom, exposure)
-                + aaEdgeLength(uv, along, crossN, refDelta, bloom, exposure);
+    float total = aaEdgeLength(uv, -along, crossN, refDelta)
+                + aaEdgeLength(uv, along, crossN, refDelta);
     float coverage = mix(0.2, 0.5, saturate(total / float(SMAA_SEARCH_STEPS)));
 
-    vec3 neighbor = processPixel(uv + crossN, bloom, exposure);
-    return mix(color, neighbor, saturate(coverage * SMAA_STRENGTH));
+    return mix(color, gradedAt(uv + crossN), saturate(coverage * SMAA_STRENGTH));
 }
 #endif
 
@@ -111,33 +85,13 @@ float ataaDepthEdge(vec2 uv, vec2 px) {
 
 void main() {
     vec2 px = 1.0 / vec2(viewWidth, viewHeight);
-#ifdef BLOOM
-    vec3 bloom = bloomSample(uv);
-#else
-    vec3 bloom = vec3(0.0);
-#endif
-#if defined WORLD_NETHER || defined WORLD_END
-    float exposure = EXPOSURE * DIMENSION_EXPOSURE;
-#else
-  #ifdef AUTO_EXPOSURE
-    float autoEx = texture(colortex12, EXPOSURE_UV).r;
-    if (!(autoEx > 0.0)) autoEx = 1.0;
-    float exposure = EXPOSURE * clamp(autoEx, EXPOSURE_MIN, EXPOSURE_MAX);
-  #else
-    float eyeSky = float(eyeBrightnessSmooth.y) / 240.0;
-    float exposure = EXPOSURE * mix(1.30, 0.82, eyeSky);
-  #endif
-#endif
-
-    exposure *= CALM_EXPOSURE;
-
-    vec3 color = processPixel(uv, bloom, exposure);
+    vec3 color = gradedAt(uv);
 
 #if defined FXAA || defined TEMPORAL_AA || SHARPEN_MODE > 0
-    vec3 cN = processPixel(uv + vec2(0.0, -px.y), bloom, exposure);
-    vec3 cS = processPixel(uv + vec2(0.0, px.y), bloom, exposure);
-    vec3 cE = processPixel(uv + vec2( px.x, 0.0), bloom, exposure);
-    vec3 cW = processPixel(uv + vec2(-px.x, 0.0), bloom, exposure);
+    vec3 cN = gradedAt(uv + vec2(0.0, -px.y));
+    vec3 cS = gradedAt(uv + vec2(0.0, px.y));
+    vec3 cE = gradedAt(uv + vec2( px.x, 0.0));
+    vec3 cW = gradedAt(uv + vec2(-px.x, 0.0));
 #endif
 
 #if defined FXAA && !(defined UPSCALING && defined TEMPORAL_AA)
@@ -149,7 +103,7 @@ void main() {
         float range = lMax - lMin;
         if (range > max(0.05, lMax * 0.12)) {
             vec2 dir = normalize(vec2(-((lN + lS) - 2.0 * lC), ((lE + lW) - 2.0 * lC)) + 1e-6);
-            vec3 blur = (processPixel(uv + dir * px * 0.75, bloom, exposure) + processPixel(uv - dir * px * 0.75, bloom, exposure)) * 0.5;
+            vec3 blur = (gradedAt(uv + dir * px * 0.75) + gradedAt(uv - dir * px * 0.75)) * 0.5;
             color = mix(color, blur, saturate(range * 3.0));
         }
     }
@@ -162,23 +116,33 @@ void main() {
 #ifdef MORPH_AA
   #ifdef ATAA
     if (ataaDepthEdge(uv, px) > ATAA_DEPTH_EDGE)
-        color = morphAA(uv, color, px, bloom, exposure);
+        color = morphAA(uv, color, px);
   #else
-    color = morphAA(uv, color, px, bloom, exposure);
+    color = morphAA(uv, color, px);
   #endif
 #endif
 
 #if SHARPEN_MODE == 1
     if (SHARPEN_STRENGTH > 0.0) {
-        vec3 cNW = processPixel(uv + vec2(-px.x, -px.y), bloom, exposure);
-        vec3 cNE = processPixel(uv + vec2( px.x, -px.y), bloom, exposure);
-        vec3 cSW = processPixel(uv + vec2(-px.x, px.y), bloom, exposure);
-        vec3 cSE = processPixel(uv + vec2( px.x, px.y), bloom, exposure);
+        vec3 cNW = gradedAt(uv + vec2(-px.x, -px.y));
+        vec3 cNE = gradedAt(uv + vec2( px.x, -px.y));
+        vec3 cSW = gradedAt(uv + vec2(-px.x, px.y));
+        vec3 cSE = gradedAt(uv + vec2( px.x, px.y));
         color = casSharpen(cNW, cN, cNE, cW, color, cE, cSW, cS, cSE, SHARPEN_STRENGTH);
     }
 #elif SHARPEN_MODE == 2
     if (SHARPEN_STRENGTH > 0.0)
         color = rcasSharpen(cN, cW, color, cE, cS, exp2(-2.0 * (1.0 - SHARPEN_STRENGTH)));
+#endif
+
+#ifdef CHROMATIC_ABERRATION
+    {
+        vec2 d = uv - 0.5;
+        vec2 off = d * (dot(d, d) * CHROMATIC_STRENGTH * 0.0040);
+        vec3 base = gradedAt(uv);
+        color.r += gradedAt(clamp(uv + off, vec2(0.0), vec2(1.0))).r - base.r;
+        color.b += gradedAt(clamp(uv - off, vec2(0.0), vec2(1.0))).b - base.b;
+    }
 #endif
 
 #ifdef VIGNETTE
@@ -188,6 +152,13 @@ void main() {
     }
 #endif
 
+#ifdef FILM_GRAIN
+    {
+        float shadowBias = mix(1.0, 0.32, smoothstep(0.05, 0.65, luminance(color)));
+        color += filmGrain(gl_FragCoord.xy, frameCounter) * (FILM_GRAIN_STRENGTH * 0.055 * shadowBias);
+    }
+#endif
+
     color += (ign(gl_FragCoord.xy) - 0.5) / 255.0;
-    outColor = vec4(color, 1.0);
+    outColor = vec4(saturate(color), 1.0);
 }

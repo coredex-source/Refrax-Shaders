@@ -6,6 +6,17 @@
 #include "/lib/common.glsl"
 
 
+float sceneExposure(float autoExposure, float eyeSky) {
+#if defined WORLD_NETHER || defined WORLD_END
+    float e = EXPOSURE * DIMENSION_EXPOSURE;
+#elif defined AUTO_EXPOSURE
+    float e = EXPOSURE * clamp(autoExposure > 0.0 ? autoExposure : 1.0, EXPOSURE_MIN, EXPOSURE_MAX);
+#else
+    float e = EXPOSURE * mix(1.30, 0.82, eyeSky);
+#endif
+    return e * CALM_EXPOSURE;
+}
+
 vec3 agxContrast(vec3 x) {
     vec3 x2 = x * x, x4 = x2 * x2;
     return 15.5 * x4 * x2 - 40.14 * x4 * x + 31.96 * x4

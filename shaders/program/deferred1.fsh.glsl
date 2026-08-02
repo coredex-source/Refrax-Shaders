@@ -190,7 +190,8 @@ void main() {
     float pomShadow = c1.a;
     vec4 c2 = texture(colortex2, uv);
     vec3 N = normalize(c2.rgb);
-    float emission = c2.a;
+    float emission = surfaceEmission(c2.a);
+    float dynamicSurface = surfaceDynamic(c2.a);
     vec4 c3 = texture(colortex3, uv);
     vec2 lm = c3.xy;
     float roughness = c3.z;
@@ -219,7 +220,7 @@ void main() {
     {
         float snowAmt = saturate(wetness) * refraxSnowBiome;
         if (snowAmt > 0.001 && emission < 0.02) {
-            snowCover = snowAccumulation(worldPos, geomNW, lm.y, snowAmt, footprint);
+            snowCover = snowAccumulation(worldPos, geomNW, lm.y, snowAmt, footprint, dynamicSurface);
             if (snowCover > 0.001) {
                 albedo = mix(albedo, SNOW_ALBEDO, snowCover);
                 roughness = mix(roughness, 0.58, snowCover);
@@ -317,7 +318,7 @@ void main() {
     color += albedo * sqrt(albedo) * (emission * EMISSION_STRENGTH * EMISSION_SCALE);
 
 #ifdef SNOW_ACTIVE
-    if (snowCover > 0.001)
+    if (snowCover > 0.001 && dynamicSurface < 0.5)
         color += snowSparkle(worldPos, N, -dirW, lightDir, length(scenePos)) * lightCol * directShadow * snowCover;
 #endif
 

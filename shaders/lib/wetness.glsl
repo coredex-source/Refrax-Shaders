@@ -106,7 +106,7 @@ float snowField(vec3 worldPos, float footprint) {
 #endif
 }
 
-float snowAccumulation(vec3 worldPos, vec3 N, float skyLight, float amount, float footprint) {
+float snowAccumulation(vec3 worldPos, vec3 N, float skyLight, float amount, float footprint, float dynamicFlag) {
     float up = smoothstep(0.28, 0.72, N.y);
     if (up <= 0.0) return 0.0;
     float open = smoothstep(0.42, 0.88, skyLight);
@@ -114,7 +114,8 @@ float snowAccumulation(vec3 worldPos, vec3 N, float skyLight, float amount, floa
     float cover = saturate(amount * SNOW_AMOUNT);
     float edge = mix(0.86, -0.18, cover);
     float slope = 3.4 / (1.0 + footprint * 2.6);
-    return saturate((snowField(worldPos, footprint) - edge) * slope) * up * open;
+    float field = dynamicFlag > 0.5 ? 0.5 : snowField(worldPos, footprint);
+    return saturate((field - edge) * slope) * up * open;
 }
 
 vec3 snowSparkle(vec3 worldPos, vec3 N, vec3 V, vec3 lightDir, float dist) {

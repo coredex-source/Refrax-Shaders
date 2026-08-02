@@ -13,4 +13,17 @@
 #define bloomLevelScale(i) (0.5 * exp2(-float(i)))
 #define bloomLevelY(i) (1.0 - exp2(-float(i)))
 
+const float BLOOM_ADD = 0.30;
+const float BLOOM_SOURCE_CLAMP = 16.0;
+
+vec3 bloomPrefilter(vec3 c, float exposure) {
+    float br = max(c.r, max(c.g, c.b)) * exposure;
+    if (br <= 1e-5) return vec3(0.0);
+    float knee = BLOOM_THRESHOLD * BLOOM_KNEE;
+    float soft = clamp(br - BLOOM_THRESHOLD + knee, 0.0, 2.0 * knee);
+    soft = soft * soft / (4.0 * knee + 1e-4);
+    float excess = min(max(soft, br - BLOOM_THRESHOLD), BLOOM_SOURCE_CLAMP);
+    return c * (excess / br);
+}
+
 #endif

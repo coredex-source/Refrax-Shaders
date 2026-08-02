@@ -29,6 +29,17 @@ vec3 taaTonemap(vec3 c) { return c / (1.0 + max3(c)); }
 vec3 taaUntonemap(vec3 c) { return c / max(1.0 - max3(c), 1e-4); }
 #endif
 
+#ifdef DYNAMIC_TAA
+float dynamicMask(sampler2D tex, ivec2 texel, ivec2 tmax) {
+    float m = surfaceDynamic(texelFetch(tex, texel, 0).a);
+    for (int i = 0; i < 4; i++) {
+        ivec2 o = ivec2(i == 0 ? -2 : (i == 1 ? 2 : 0), i == 2 ? -2 : (i == 3 ? 2 : 0));
+        m = max(m, surfaceDynamic(texelFetch(tex, clamp(texel + o, ivec2(0), tmax), 0).a));
+    }
+    return m;
+}
+#endif
+
 #ifdef TEMPORAL_AA
 
 vec3 clipToAABB(vec3 h, vec3 mn, vec3 mx) {
@@ -70,13 +81,13 @@ void main() {
 
     ivec2 t0 = ivec2(gl_FragCoord.xy);
     ivec2 tmax = ivec2(viewSize) - 1;
-    float emissiveReactive = materialA <= 1.0 ? saturate(materialA) : 0.0;
+    float emissiveReactive = saturate(surfaceEmission(materialA));
     float portalReactive = step(2.01, materialA);
     for (int i = 0; i < 4; i++) {
         ivec2 o = ivec2(i == 0 ? -1 : (i == 1 ? 1 : 0),
                          i == 2 ? -1 : (i == 3 ? 1 : 0));
         float a = texelFetch(colortex2, clamp(t0 + o, ivec2(0), tmax), 0).a;
-        if (a <= 1.0) emissiveReactive = max(emissiveReactive, saturate(a));
+        emissiveReactive = max(emissiveReactive, saturate(surfaceEmission(a)));
         portalReactive = max(portalReactive, step(2.01, a));
     }
     float centerDepth = texelFetch(depthtex0, t0, 0).r;
@@ -179,6 +190,16 @@ void main() {
                               max(taauYcocgPeak(nG), max(taauYcocgPeak(nH), taauYcocgPeak(nI)))));
     cw = rgbToYcocg(taauLimitPeak(ycocgToRgb(cw), localPeak));
 
+#ifdef DYNAMIC_TAA
+    float dynReject = dynamicMask(colortex2, t0, tmax);
+    if (dynReject > 0.0) {
+        vec3 boxCenter = 0.5 * (mx + mn);
+        vec3 boxExtent = max(0.5 * (mx - mn), vec3(1e-3));
+        vec3 outside = abs((hw - boxCenter) / boxExtent);
+        dynReject *= saturate(max(outside.x, max(outside.y, outside.z)) - 1.0) * DYNAMIC_TAA_STRENGTH;
+    }
+#endif
+
     bool clipped;
     hw = taauClipAabb(hw, mn, mx, clipped);
     float flicker = clipped ? 0.0 : taauFlickerReduction(hw, mn, mx);
@@ -189,6 +210,9 @@ void main() {
     if (c0.a < 0.5) alpha = max(alpha, 0.85);
     alpha = max(alpha, emissiveReactive * TAAU_EMISSIVE_REACTIVE);
     alpha = max(alpha, portalReactive * TAAU_PORTAL_REACTIVE);
+#ifdef DYNAMIC_TAA
+    alpha = max(alpha, dynReject);
+#endif
 
     vec2 pixOff = 1.0 - abs(2.0 * fract(viewSize * prevUV.xy) - 1.0);
     float offRej = sqrt(pixOff.x * pixOff.y) * TAAU_OFFCENTER_REJECTION + (1.0 - TAAU_OFFCENTER_REJECTION);
@@ -201,6 +225,9 @@ void main() {
 
     float ageOut = max(min(age * offRej, TAAU_MAX_AGE), 1.0);
     ageOut = mix(ageOut, 1.0, portalReactive);
+#ifdef DYNAMIC_TAA
+    ageOut = mix(ageOut, 1.0, dynReject);
+#endif
     outColor = vec4(min(taaUntonemap(outW), vec3(60000.0)), 1.0);
     outHistory = vec4(resolved, portalReactive < 0.5 && reflectable > 0.5 ? ageOut : -ageOut);
 }
@@ -295,6 +322,15 @@ void main() {
 #else
     const float clipGamma = TAA_CLIP_GAMMA;
     float blend = TAA_BLEND * saturate(1.0 - motion * 0.03);
+#endif
+#ifdef DYNAMIC_TAA
+    {
+        float dyn = dynamicMask(colortex2, ivec2(gl_FragCoord.xy), ivec2(vec2(viewWidth, viewHeight)) - 1);
+        if (dyn > 0.0) {
+            vec3 outside = abs(hw - mu) / max(clipGamma * sigma, vec3(1e-3));
+            blend *= 1.0 - DYNAMIC_TAA_STRENGTH * dyn * saturate(max(outside.x, max(outside.y, outside.z)) - 1.0);
+        }
+    }
 #endif
     hw = clipToAABB(hw, mu - clipGamma * sigma, mu + clipGamma * sigma);
 

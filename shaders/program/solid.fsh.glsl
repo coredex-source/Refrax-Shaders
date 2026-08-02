@@ -189,8 +189,14 @@ void main() {
 #endif
 #endif
 
+#ifdef ENTITY
+    const float dynamicSurface = 1.0;
+#else
+    const float dynamicSurface = 0.0;
+#endif
+
     outAlbedo = vec4(albedo.rgb, pomShadow);
-    outNormal = vec4(N, emission);
+    outNormal = vec4(N, packSurface(emission, dynamicSurface));
     outMaterial = vec4(lmcoord, mat.roughness, mat.f0);
     outExtra = vec4(mat.sss, mat.porosity, mat.anisotropy, packCoating(mat.clearcoat, mat.thinFilm));
 }

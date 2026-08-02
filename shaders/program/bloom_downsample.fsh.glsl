@@ -2,15 +2,23 @@
 
 #include "/lib/settings.glsl"
 #include "/lib/common.glsl"
+#include "/lib/post.glsl"
 #include "/lib/bloom.glsl"
 
 uniform float viewWidth, viewHeight;
 
 #if BLOOM_LEVEL == 0
 uniform sampler2D colortex0;
+#ifdef AUTO_EXPOSURE
+uniform sampler2D colortex12;
+#endif
+uniform ivec2 eyeBrightnessSmooth;
 const float srcScale = 1.0;
 const float srcY = 0.0;
-vec3 srcFetch(vec2 c) { return max(textureLod(colortex0, c, 0.0).rgb, vec3(0.0)); }
+float prefilterExposure = 1.0;
+vec3 srcFetch(vec2 c) {
+    return bloomPrefilter(max(textureLod(colortex0, c, 0.0).rgb, vec3(0.0)), prefilterExposure);
+}
 #else
 uniform sampler2D colortex4;
 const float srcScale = bloomLevelScale(BLOOM_LEVEL - 1);
@@ -38,6 +46,14 @@ layout(location = 0) out vec4 outTile;
 void main() {
     ivec2 texel = ivec2(gl_FragCoord.xy);
     vec2 px = 1.0 / vec2(viewWidth, viewHeight);
+
+#if BLOOM_LEVEL == 0
+  #ifdef AUTO_EXPOSURE
+    prefilterExposure = sceneExposure(texture(colortex12, EXPOSURE_UV).r, 0.0);
+  #else
+    prefilterExposure = sceneExposure(1.0, float(eyeBrightnessSmooth.y) / 240.0);
+  #endif
+#endif
 
 #if BLOOM_LEVEL > 0
     if (texel.y < int(viewHeight * lvlY + 0.5)) {
