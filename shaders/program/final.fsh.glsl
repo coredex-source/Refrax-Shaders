@@ -11,6 +11,10 @@
 #endif
 
 uniform sampler2D colortex0;
+uniform sampler2D colortex2;
+#ifdef VOXY
+uniform sampler2D colortex9;
+#endif
 uniform float viewWidth, viewHeight;
 #ifdef FILM_GRAIN
 uniform int frameCounter;
@@ -86,6 +90,12 @@ float ataaDepthEdge(vec2 uv, vec2 px) {
 void main() {
     vec2 px = 1.0 / vec2(viewWidth, viewHeight);
     vec3 color = gradedAt(uv);
+    float materialA = texture(colortex2, uv).a;
+    bool waterPixel = materialA > 1.8 && materialA < 2.5;
+#ifdef VOXY
+    float voxyMaterialA = texture(colortex9, uv).a;
+    waterPixel = waterPixel || (voxyMaterialA > 1.8 && voxyMaterialA < 2.5);
+#endif
 
 #if defined FXAA || defined TEMPORAL_AA || SHARPEN_MODE > 0
     vec3 cN = gradedAt(uv + vec2(0.0, -px.y));
@@ -101,7 +111,7 @@ void main() {
         float lMin = min(lC, min(min(lN, lS), min(lE, lW)));
         float lMax = max(lC, max(max(lN, lS), max(lE, lW)));
         float range = lMax - lMin;
-        if (range > max(0.05, lMax * 0.12)) {
+        if (!waterPixel && range > max(0.05, lMax * 0.12)) {
             vec2 dir = normalize(vec2(-((lN + lS) - 2.0 * lC), ((lE + lW) - 2.0 * lC)) + 1e-6);
             vec3 blur = (gradedAt(uv + dir * px * 0.75) + gradedAt(uv - dir * px * 0.75)) * 0.5;
             color = mix(color, blur, saturate(range * 3.0));

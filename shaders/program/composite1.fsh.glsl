@@ -67,6 +67,7 @@ void main() {
 
     float materialA = texture(colortex2, uv).a;
     float reflectable = materialA > 2.5 ? 0.0 : 1.0;
+    float waterReactive = float(materialA > 1.8 && materialA < 2.5);
 
     vec2 posPx = uv * inSize + taauOffset(frameCounter);
     vec2 posUV = clamp(posPx, vec2(0.5), regionMax) * px;
@@ -210,6 +211,7 @@ void main() {
     if (c0.a < 0.5) alpha = max(alpha, 0.85);
     alpha = max(alpha, emissiveReactive * TAAU_EMISSIVE_REACTIVE);
     alpha = max(alpha, portalReactive * TAAU_PORTAL_REACTIVE);
+    alpha = max(alpha, waterReactive * WATER_TAA_REACTIVE);
 #ifdef DYNAMIC_TAA
     alpha = max(alpha, dynReject);
 #endif
@@ -225,6 +227,7 @@ void main() {
 
     float ageOut = max(min(age * offRej, TAAU_MAX_AGE), 1.0);
     ageOut = mix(ageOut, 1.0, portalReactive);
+    ageOut = mix(ageOut, 1.0, waterReactive * WATER_TAA_REACTIVE);
 #ifdef DYNAMIC_TAA
     ageOut = mix(ageOut, 1.0, dynReject);
 #endif
@@ -241,7 +244,9 @@ void main() {
     vec3 current = c0.rgb;
     if (any(isnan(current))) current = vec3(0.0);
     current = max(current, vec3(0.0));
-    float reflectable = texture(colortex2, uv).a > 2.5 ? 0.0 : 1.0;
+    float materialA = texture(colortex2, uv).a;
+    float reflectable = materialA > 2.5 ? 0.0 : 1.0;
+    float waterReactive = float(materialA > 1.8 && materialA < 2.5);
 #ifndef TEMPORAL_AA
   #ifdef FSR
     outColor = vec4(min(taaTonemap(current), vec3(0.98)), 1.0);
@@ -334,6 +339,7 @@ void main() {
 #endif
     hw = clipToAABB(hw, mu - clipGamma * sigma, mu + clipGamma * sigma);
 
+    blend *= 1.0 - waterReactive * WATER_TAA_REACTIVE;
     if (c0.a < 0.5) blend = min(blend, 0.15);
     vec3 resolvedW = mix(cw, hw, blend);
 #ifdef FSR

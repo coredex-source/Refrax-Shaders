@@ -55,7 +55,7 @@ uniform sampler2D depthtex0, depthtex1;
   #endif
 #endif
 uniform sampler2D shadowtex0, shadowtex1, shadowcolor0;
-uniform mat4 gbufferModelViewInverse, gbufferProjection, gbufferProjectionInverse;
+uniform mat4 gbufferModelView, gbufferModelViewInverse, gbufferProjection, gbufferProjectionInverse;
 uniform mat4 shadowModelView, shadowProjection;
 uniform vec3 cameraPosition;
 uniform vec3 sunPosition;
@@ -111,15 +111,12 @@ void main() {
 #ifdef LOD_ACTIVE
         vec3 frontView = lodWater ? screenToView(vec3(uv, lodDepth0), lodProjectionInverse)
                                   : screenToView(vec3(uv, depth0), gbufferProjectionInverse);
-        vec3 backView = lodWater ? screenToView(vec3(uv, texture(lodDepthTex1, suv).r), lodProjectionInverse)
-                                 : screenToView(vec3(uv, depth1), gbufferProjectionInverse);
 #else
         vec3 frontView = screenToView(vec3(uv, depth0), gbufferProjectionInverse);
-        vec3 backView = screenToView(vec3(uv, depth1), gbufferProjectionInverse);
 #endif
-        float viewDist = length(frontView);
-        float layerDist = abs(length(backView) - viewDist);
-        vec2 ruv = suv + wn.xz * (min(layerDist, 8.0) / max(viewDist, 1.0)) * 0.12 * REFRACTION_INTENSITY;
+        vec3 viewNormal = normalize(mat3(gbufferModelView) * wn);
+        vec2 projScale = vec2(gbufferProjection[0][0], gbufferProjection[1][1]) * 0.5;
+        vec2 ruv = suv + waterRefractOffset(frontView, viewNormal, projScale);
         bool refrClear = texture(depthtex1, ruv).r > depth0;
 #ifdef LOD_ACTIVE
         if (lodWater) refrClear = texture(depthtex1, ruv).r >= 1.0 && texture(lodDepthTex1, ruv).r > lodDepth0;

@@ -202,6 +202,7 @@ void main() {
     vec3 sunDir = normalize(mat3(gbufferModelViewInverse) * sunPosition);
     vec3 lightDir = normalize(mat3(gbufferModelViewInverse) * shadowLightPosition);
     float dither = ignAnim(gl_FragCoord.xy, frameCounter);
+    float ssrDither = ign(gl_FragCoord.xy);
     vec2 ssrJitter = taaJitterUV(vec2(viewWidth, viewHeight), frameCounter);
     float materialAO = 1.0;
 
@@ -247,22 +248,25 @@ void main() {
   #ifdef WATER
     bool realWater = realWaterFwd;
     vec3 worldPos = scenePos + cameraPosition;
+    float waterRoughness = WATER_ROUGHNESS;
+    float waterCrest = 0.0;
+    float waterFlow = 0.0;
+    float waterFootprint = max(max(length(dFdx(scenePos)), length(dFdy(scenePos))), 0.005);
     if (realWater && N.y > 0.5) {
         float vDot = abs(dot(N, normalize(-scenePos)));
         float waterDist = length(scenePos);
         vec2 drift = vec2(0.0);
-        float flow = 0.0;
     #ifdef WATER_FLOW
         {
             vec3 surfN = normalize(cross(dFdx(scenePos), dFdy(scenePos)));
             if (surfN.y < 0.0) surfN = -surfN;
             vec2 grad = surfN.xz / max(surfN.y, 0.25);
-            flow = min(length(grad), 0.9);
-            if (flow > 0.02)
+            waterFlow = min(length(grad), 0.9);
+            if (waterFlow > 0.02)
                 drift = grad * (frameTimeCounter * WAVE_SPEED * FLOW_SPEED * 1.35);
         }
     #endif
-        N = waterNormalFlow(noisetex, worldPos.xz, drift, frameTimeCounter, vDot, lmcoord.y, rainStrength, waterDist, flow);
+        N = waterSurfaceNormalFlow(noisetex, worldPos, drift, frameTimeCounter, vDot, lmcoord.y, rainStrength, waterFlow, waterFootprint, waterRoughness, waterCrest);
     #ifdef WATER_RIPPLES_ACTIVE
         {
             float ripple = (1.0 - smoothstep(16.0, 40.0, waterDist))
@@ -282,7 +286,8 @@ void main() {
     }
   #ifdef WATER_FLOW
     else if (realWater && abs(N.y) < 0.5) {
-        N = waterfallNormal(noisetex, worldPos, N, frameTimeCounter, lmcoord.y, rainStrength, length(scenePos));
+        waterFlow = 1.0;
+        N = waterfallSurfaceNormal(noisetex, worldPos, N, frameTimeCounter, lmcoord.y, rainStrength, waterFlow, waterFootprint, waterRoughness, waterCrest);
     }
   #endif
   #endif
@@ -378,8 +383,7 @@ void main() {
   #endif
     float fres = realWater ? waterFresnel(dot(viewDirW, N)) : luminance(surfaceFresnel);
 
-    vec3 reflN = realWater ? waterReflectNormal(N) : N;
-    vec3 reflDirW = reflect(-viewDirW, reflN);
+    vec3 reflDirW = realWater ? waterReflectionDirection(viewDirW, N) : reflect(-viewDirW, N);
   #if defined WORLD_NETHER || defined WORLD_END
     vec3 refl = dimensionSkyReflection(reflDirW, sunDir, fogColor, frameTimeCounter, rainStrength);
   #else
@@ -391,8 +395,8 @@ void main() {
         vec3 reflDirV = mat3(gbufferModelView) * reflDirW;
         vec3 hit;
         float hitS = WATER_REFLECTION_MODE == 1
-            ? raymarchSSRFast(depthtex1, viewPos, reflDirV, gbufferProjection, gbufferProjectionInverse, dither, ssrJitter, hit)
-            : raymarchSSR(depthtex1, viewPos, reflDirV, gbufferProjection, gbufferProjectionInverse, dither, ssrJitter, hit);
+            ? raymarchSSRFast(depthtex1, viewPos, reflDirV, gbufferProjection, gbufferProjectionInverse, ssrDither, ssrJitter, hit)
+            : raymarchSSR(depthtex1, viewPos, reflDirV, gbufferProjection, gbufferProjectionInverse, ssrDither, ssrJitter, hit);
         if (hitS > 0.0) {
             vec3 hitView = screenToView(hit, gbufferProjectionInverse);
             vec3 hitScene = (gbufferModelViewInverse * vec4(hitView, 1.0)).xyz;
@@ -406,27 +410,36 @@ void main() {
   #ifdef THUNDER_ACTIVE
     refl *= 1.0 + thunderSkyGlow(lightningBoltPosition) * 1.5;
   #endif
-    float glintRough = WATER_ROUGHNESS + saturate(length(scenePos) / 96.0) * 0.018;
-    vec3 glintF0 = vec3(0.02);
+    float glintRough = waterRoughness;
+    float glintRadius = SUN_GLINT_RADIUS;
+    vec3 glintF0 = vec3(WATER_FRESNEL);
   #if defined PBR_MATERIALS && !defined PARTICLE
     if (!realWater) {
         glintRough = max(materialReflectionRoughness(mat.roughness, mat.clearcoat) * 0.5, 0.03);
+        glintRadius = SUN_GLINT_RADIUS;
         glintF0 = materialF0(mat.f0, albedo.rgb);
     }
   #else
-    if (!realWater) glintRough = 0.03;
+    if (!realWater) {
+        glintRough = 0.03;
+        glintRadius = SUN_GLINT_RADIUS;
+    }
   #endif
     vec3 sunSpecShape = realWater
-        ? waterDiscLightSpecular(N, viewDirW, lightDir, SUN_GLINT_RADIUS, glintRough, glintF0)
+        ? vec3(waterSunGlint(N, viewDirW, lightDir))
   #if defined PBR_MATERIALS && !defined PARTICLE
-        : materialDiscLightSpecular(N, viewDirW, lightDir, SUN_GLINT_RADIUS, glintRough, glintF0, mat.anisotropy, mat.clearcoat, mat.thinFilm);
+        : materialDiscLightSpecular(N, viewDirW, lightDir, glintRadius, glintRough, glintF0, mat.anisotropy, mat.clearcoat, mat.thinFilm);
   #else
-        : discLightSpecular(N, viewDirW, lightDir, SUN_GLINT_RADIUS, glintRough, glintF0);
+        : discLightSpecular(N, viewDirW, lightDir, glintRadius, glintRough, glintF0);
   #endif
-    vec3 sunSpec = sunSpecShape * lightCol * shadow * (realWater ? SUN_GLINT_STRENGTH : PBR_GLINT_STRENGTH);
+    vec3 sunSpec = sunSpecShape * lightCol * shadow * (realWater ? WATER_GLINT_STRENGTH : PBR_GLINT_STRENGTH);
   #if defined PBR_MATERIALS && !defined PARTICLE
     if (!realWater) sunSpec = compressMaterialHighlight(sunSpec);
   #endif
+    if (realWater) {
+        refl = waterReflectionColor(refl);
+        sunSpec = waterGlintColor(sunSpec);
+    }
 
     if (realWater) {
         vec2 suv = gl_FragCoord.xy / vec2(viewWidth, viewHeight);
@@ -443,20 +456,16 @@ void main() {
         float waterDepth = max(backDist - length(scenePos), 0.0);
         vec3 trans = waterTransmittanceTinted(vcolor.rgb, waterDepth);
 
-        vec3 scatter = mix(WATER_COLOR * WATER_COLOR, srgbToLinear(vcolor.rgb) * 0.20, 0.25) * 0.80;
-        vec3 body = scatter * (lightCol * NoL * shadow * 0.22 + skyLight * 0.92 + blockLight * 0.52 + flash * 0.60);
-        body = mix(body, body * 0.42, saturate(1.0 - trans.g));
-        lit = mix(body, refl, fres) + sunSpec * 1.5;
+        vec3 bodyLighting = lightCol * NoL * shadow * 0.22 + skyLight * 0.92 + blockLight * 0.52 + flash * 0.60;
+        vec3 body = waterBodyColor(vcolor.rgb, trans, bodyLighting);
+        lit = mix(body, refl, fres) + sunSpec;
         alpha = waterSurfaceAlpha(trans, fres);
 
 #ifdef WATER_FOAM
-        float foamEdge = 1.0 - saturate(waterDepth / FOAM_WIDTH);
-        if (foamEdge > 0.001) {
-            vec2 fuv = worldPos.xz * 0.115
-                     + vec2(frameTimeCounter * 0.013, frameTimeCounter * -0.009);
-            float fn = texture(noisetex, fuv).b;
-            float mask = saturate(foamEdge * foamEdge * (0.45 + 1.05 * fn) * FOAM_STRENGTH);
-            vec3 foamCol = (skyLight + lightCol * shadow * 0.35) * vec3(0.92, 0.95, 1.00);
+        float waterSlope = geomN.y > 0.5 ? length(N.xz) / max(N.y, 0.1) : 0.0;
+        float mask = waterFoamMask(noisetex, worldPos.xz, frameTimeCounter, waterDepth, waterCrest, waterSlope, rainStrength, waterFlow);
+        if (mask > 0.001) {
+            vec3 foamCol = (skyLight + lightCol * shadow * 0.35) * vec3(0.98, 1.02, 1.08);
             lit = mix(lit, foamCol, mask);
             alpha = max(alpha, mask * 0.92);
         }
