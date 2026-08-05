@@ -117,9 +117,11 @@ void main() {
     vec4 albedo = textureGrad(gtexture, texcoord, uvDx, uvDy) * vcolor;
 
 #ifdef PARTICLE_MARKER
-    float splashBlue = albedo.b - max(albedo.r, albedo.g);
-    if (albedo.b > 0.68 && splashBlue > 0.22 && albedo.r < 0.40)
-        discard;
+    if (rainStrength > 0.01) {
+        float splashBlue = albedo.b - max(albedo.r, albedo.g);
+        if (albedo.b > 0.68 && splashBlue > 0.22 && albedo.r < 0.40)
+            discard;
+    }
 #endif
 #if defined PARTICLE && !defined WEATHER
     bool splashPalette = albedo.r < 0.42 && albedo.g < 0.62 && albedo.b > 0.55
@@ -220,8 +222,10 @@ void main() {
     mat.thinFilm = 0.0;
     if (!cutoutFoliage) mat = decodeSpecular(textureGrad(specular, texcoord, uvDx, uvDy));
     if (!cutoutFoliage) applyFallbackMaterial(blockId, mat);
+  #if !defined HAND && !defined ENTITY
     if (mat.emission <= 0.0 && blockId == 0)
         mat.emission = inferredEmission(linearToSrgb(albedo.rgb), lmcoord.x);
+  #endif
     if (!cutoutFoliage && dot(tangentW, tangentW) > 1e-6) {
         mat3 TBN = makeTBN(N, tangentW, tangentSign);
         vec4 nTex = textureGrad(normals, texcoord, uvDx, uvDy);
@@ -303,7 +307,7 @@ void main() {
     #endif
     NoL = 0.6;
   #elif defined HAND
-    vec3 shadow = vec3(pomShadow);
+    vec3 shadow = vec3(pomShadow * pow(lmcoord.y, 2.0));
   #else
     vec3 shadow = getShadow(scenePos, N, NoL, dither, shadowModelView, shadowProjection, shadowtex0, shadowtex1, shadowcolor0);
     #if defined CLOUD_SHADOWS && !defined WORLD_NETHER && !defined WORLD_END
@@ -364,7 +368,7 @@ void main() {
         float handReflectionWeight = metalHand ? mix(0.35, 0.85, 1.0 - saturate(handReflectionRoughness)) : pow(1.0 - saturate(handReflectionRoughness), 2.0);
         vec3 handReflectionDirection = reflect(-V, N);
         vec3 handReflection = dimensionSkyReflection(handReflectionDirection, sunDir, fogColor, frameTimeCounter, rainStrength);
-        handReflection *= mix(0.12, 1.0, lmcoord.y * lmcoord.y);
+        handReflection *= mix(0.02, 1.0, lmcoord.y * lmcoord.y);
         lit += handReflection * handFresnel * handReflectionWeight;
     }
   #endif

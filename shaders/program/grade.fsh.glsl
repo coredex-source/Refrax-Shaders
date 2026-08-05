@@ -15,7 +15,7 @@ uniform sampler2D colortex12;
 #endif
 uniform float viewWidth, viewHeight;
 uniform ivec2 eyeBrightnessSmooth;
-#if defined LENS_GATHER || defined LENS_FLARE_ACTIVE
+#ifdef LENS_GATHER
 uniform sampler2D depthtex0;
 uniform int frameCounter;
 #endif
@@ -31,22 +31,21 @@ uniform int heldItemId, heldItemId2;
 #ifdef MOTION_BLUR
 uniform mat4 gbufferProjectionInverse;
 uniform mat4 gbufferPreviousModelView, gbufferPreviousProjection;
+uniform mat4 gbufferModelViewInverse;
 uniform vec3 cameraPosition, previousCameraPosition;
 uniform float frameTime;
-#endif
-#if defined MOTION_BLUR || defined LENS_FLARE_ACTIVE
-uniform mat4 gbufferModelViewInverse;
-#endif
-#ifdef LENS_FLARE_ACTIVE
-uniform mat4 gbufferProjection;
-uniform vec3 sunPosition;
-uniform float rainStrength;
 #endif
 #ifdef PURKINJE
 uniform float nightVision;
 #endif
 
 in vec2 uv;
+#ifdef LENS_FLARE_ACTIVE
+flat in vec2 flareOrigin;
+flat in vec3 flareColor;
+flat in float flareWeight;
+flat in float flareFov;
+#endif
 
 /* RENDERTARGETS: 0 */
 layout(location = 0) out vec4 outColor;
@@ -73,38 +72,6 @@ vec2 cameraMotion(vec2 coord, float depth) {
         ? reprojectScene(scenePos, gbufferPreviousModelView, gbufferPreviousProjection, previousCameraPosition, previousCameraPosition)
         : reprojectScene(scenePos, gbufferPreviousModelView, gbufferPreviousProjection, cameraPosition, previousCameraPosition);
     return coord - prev.xy;
-}
-#endif
-
-#ifdef LENS_FLARE_ACTIVE
-vec3 flareContribution(vec2 coord, float aspect) {
-    if (sunPosition.z >= 0.0) return vec3(0.0);
-    vec2 sunUV = viewToScreen(sunPosition, gbufferProjection).xy;
-    if (any(lessThan(sunUV, vec2(-0.35))) || any(greaterThan(sunUV, vec2(1.35)))) return vec3(0.0);
-
-    vec3 sunDirW = normalize(mat3(gbufferModelViewInverse) * sunPosition);
-    float altitude = smoothstep(-0.06, 0.08, sunDirW.y);
-    if (altitude <= 0.0) return vec3(0.0);
-
-    vec3 tint = vec3(0.0);
-    float sky = 0.0;
-    for (int i = 0; i < 9; i++) {
-        float a = float(i) * 0.6981317;
-        vec2 o = i == 0 ? vec2(0.0) : vec2(cos(a), sin(a)) * 0.011;
-        vec2 s = clamp(sunUV + o * vec2(1.0 / aspect, 1.0), vec2(0.0), vec2(1.0));
-        if (texture(depthtex0, s).r < 1.0) continue;
-        tint += texture(colortex0, s).rgb;
-        sky += 1.0;
-    }
-    if (sky <= 0.0) return vec3(0.0);
-
-    tint = clamp(tint / sky, vec3(0.0), vec3(12.0));
-    float visibility = sky / 9.0;
-    vec2 edge = min(sunUV, 1.0 - sunUV);
-    visibility *= saturate(min(edge.x, edge.y) * 8.0 + 1.0);
-    float weight = visibility * altitude * (1.0 - rainStrength * 0.85) * LENS_FLARE_STRENGTH;
-    if (weight <= 0.001) return vec3(0.0);
-    return lensFlare(coord, sunUV, tint, aspect) * weight;
 }
 #endif
 
@@ -178,7 +145,8 @@ void main() {
 #endif
 
 #ifdef LENS_FLARE_ACTIVE
-    hdr += flareContribution(uv, aspect);
+    if (flareWeight > 0.0002)
+        hdr += lensFlare(uv, flareOrigin, flareColor, aspect, flareFov);
 #endif
 
 #ifdef BLOOM

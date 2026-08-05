@@ -26,7 +26,7 @@ const int colortex8Format = RGBA16F;
 const int colortex9Format = RGBA16F;
 const int colortex10Format = RGBA8;
 const int colortex11Format = R8;
-const int colortex12Format = R16F;
+const int colortex12Format = RGBA16F;
 const int colortex13Format = RGBA16F;
 const int colortex14Format = R8;
 const int colortex15Format = RGBA16F;
@@ -117,7 +117,8 @@ void main() {
         vec3 viewNormal = normalize(mat3(gbufferModelView) * wn);
         vec2 projScale = vec2(gbufferProjection[0][0], gbufferProjection[1][1]) * 0.5;
         vec2 ruv = suv + waterRefractOffset(frontView, viewNormal, projScale);
-        bool refrClear = texture(depthtex1, ruv).r > depth0;
+        bool refrClear = texture(depthtex1, ruv).r > depth0
+                      && texture(depthtex0, ruv).r >= HAND_DEPTH_LIMIT;
 #ifdef LOD_ACTIVE
         if (lodWater) refrClear = texture(depthtex1, ruv).r >= 1.0 && texture(lodDepthTex1, ruv).r > lodDepth0;
 #endif

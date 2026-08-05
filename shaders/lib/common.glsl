@@ -4,6 +4,7 @@
 
 const float PI = 3.14159265359;
 #define saturate(x) clamp(x, 0.0, 1.0)
+#define HAND_DEPTH_LIMIT 0.56
 
 float luminance(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
 vec3 srgbToLinear(vec3 c) { return pow(c, vec3(2.2)); }

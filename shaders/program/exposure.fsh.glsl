@@ -2,10 +2,19 @@
 
 #include "/lib/settings.glsl"
 #include "/lib/common.glsl"
+#include "/lib/lens.glsl"
 
 uniform sampler2D colortex0;
 uniform sampler2D colortex12;
 uniform float frameTime;
+#ifdef LENS_FLARE_ACTIVE
+uniform sampler2D depthtex0;
+uniform mat4 gbufferProjection;
+uniform mat4 gbufferModelViewInverse;
+uniform vec3 sunPosition;
+uniform float viewWidth, viewHeight, rainStrength, blindness;
+uniform int isEyeInWater;
+#endif
 
 in vec2 uv;
 
@@ -13,9 +22,9 @@ in vec2 uv;
 layout(location = 0) out vec4 outExposure;
 
 void main() {
-#ifndef AUTO_EXPOSURE
-    outExposure = vec4(1.0);
-#else
+    float exposure = 1.0;
+
+#ifdef AUTO_EXPOSURE
     const int GRID = 5;
     float logSum = 0.0;
     float weightSum = 0.0;
@@ -42,6 +51,22 @@ void main() {
 
     float speed = target < prev ? EXPOSURE_SPEED_UP : EXPOSURE_SPEED_DOWN;
     float blend = 1.0 - exp(-max(frameTime, 1e-4) * speed);
-    outExposure = vec4(mix(prev, target, saturate(blend)), 0.0, 0.0, 1.0);
+    exposure = mix(prev, target, saturate(blend));
 #endif
+
+    vec3 flareLight = vec3(0.0);
+
+#ifdef LENS_FLARE_ACTIVE
+    float aspect = viewWidth / max(viewHeight, 1.0);
+    vec2 origin = flareOriginUV(sunPosition, gbufferProjection);
+    float clarity = (1.0 - rainStrength * 0.85) * (1.0 - saturate(blindness)) * float(isEyeInWater == 0);
+    flareLight = flareLightSample(colortex0, depthtex0, origin, sunPosition,
+                                  gbufferModelViewInverse, aspect, clarity);
+
+    vec3 prevLight = texture(colortex12, EXPOSURE_UV).gba;
+    if (any(isnan(prevLight))) prevLight = flareLight;
+    flareLight = mix(flareLight, prevLight, exp2(-max(frameTime, 1e-4) * 12.5));
+#endif
+
+    outExposure = vec4(exposure, flareLight);
 }

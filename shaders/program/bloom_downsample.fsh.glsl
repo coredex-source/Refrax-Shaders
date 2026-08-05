@@ -9,6 +9,7 @@ uniform float viewWidth, viewHeight;
 
 #if BLOOM_LEVEL == 0
 uniform sampler2D colortex0;
+uniform sampler2D depthtex0;
 #ifdef AUTO_EXPOSURE
 uniform sampler2D colortex12;
 #endif
@@ -17,6 +18,7 @@ const float srcScale = 1.0;
 const float srcY = 0.0;
 float prefilterExposure = 1.0;
 vec3 srcFetch(vec2 c) {
+    if (textureLod(depthtex0, c, 0.0).r < HAND_DEPTH_LIMIT) return vec3(0.0);
     return bloomPrefilter(max(textureLod(colortex0, c, 0.0).rgb, vec3(0.0)), prefilterExposure);
 }
 #else
