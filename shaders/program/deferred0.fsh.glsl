@@ -107,10 +107,10 @@ bool cloudHistory(vec3 dirW, vec2 texel, out vec4 hist) {
     hist = vec4(0.0, 0.0, 0.0, 1.0);
     if (abs(dirW.y) < 0.002) return false;
 
-    float tMid = (CLOUD_ALTITUDE + CLOUD_THICKNESS * 0.5 - cameraPosition.y) / dirW.y;
-    if (tMid <= 0.0) return false;
+    float tMid = (CU_BOTTOM + CLOUD_THICKNESS * 0.5 - cameraPosition.y) / dirW.y;
+    if (tMid <= 0.0 || tMid > CLOUD_FADE_DIST) return false;
 
-    vec3 prev = reprojectScene(dirW * min(tMid, 6000.0), gbufferPreviousModelView, gbufferPreviousProjection, cameraPosition, previousCameraPosition);
+    vec3 prev = reprojectScene(dirW * tMid, gbufferPreviousModelView, gbufferPreviousProjection, cameraPosition, previousCameraPosition);
     if (clamp(prev.xy, 0.0, 1.0) != prev.xy) return false;
 
     vec2 huv = fsrRegionUV(prev.xy, texel);
