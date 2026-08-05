@@ -156,13 +156,49 @@ vec3 skyAmbientDirectional(vec3 N, vec3 sunDir, float rain) {
     return skyAmbient(sunDir, rain) * tint * (0.75 + 0.30 * up);
 }
 
-float starField(vec3 dir, float time) {
-    vec3 p = dir * 220.0;
-    vec3 cell = floor(p);
-    float h = hash13(cell);
-    float star = step(0.9965, h);
-    float tw = 0.75 + 0.25 * sin(time * 2.5 + h * 40.0);
-    return star * tw;
+const float STAR_SCALE = 60.0;
+const float STAR_CUTOFF = 0.914;
+
+vec3 starColor(float t) {
+    vec3 c = mix(vec3(0.52, 0.66, 1.00), vec3(0.95, 0.96, 1.00), smoothstep(0.0, 0.55, t));
+    return mix(c, vec3(1.00, 0.70, 0.38), smoothstep(0.70, 1.00, t));
+}
+
+vec3 starField(vec3 dir, float time, float airMass) {
+    vec3 a = abs(dir);
+    float m = max(a.x, max(a.y, a.z));
+    vec3 nd = dir / max(m, 1e-6);
+
+    vec2 uv;
+    float face;
+    if (a.x == m) { uv = nd.yz; face = nd.x < 0.0 ? 1.0 : 0.0; }
+    else if (a.y == m) { uv = nd.zx; face = nd.y < 0.0 ? 3.0 : 2.0; }
+    else { uv = nd.xy; face = nd.z < 0.0 ? 5.0 : 4.0; }
+
+    vec2 p = uv * (1.2408 - 0.2408 * uv * uv) * STAR_SCALE;
+    vec2 cell = floor(p);
+    vec3 id = vec3(cell, face);
+
+    float h = hash13(id);
+    if (h < STAR_CUTOFF) return vec3(0.0);
+
+    float mag = (h - STAR_CUTOFF) * (1.0 / (1.0 - STAR_CUTOFF));
+    float t = hash13(id + vec3(113.0, 57.0, 19.0));
+    float bright = 0.22 + 3.30 * mag * mag * mag;
+
+    vec2 jit = vec2(hash13(id + 7.0), hash13(id + 23.0)) - 0.5;
+    vec2 off = p - cell - 0.5 - jit * 0.20;
+    float radius = 0.092 + 0.112 * mag;
+    float e = saturate(1.0 - dot(off, off) / (radius * radius));
+    float disc = e * e * (e * e + 0.30) * 0.77;
+
+    float air = max(airMass - 1.0, 0.0);
+    float depth = hash13(id + 41.0);
+    float ph = hash13(id + 73.0) * 60.0;
+    float tw = 1.0 + depth * (0.78 * sin(time * 1.90 + ph) + 0.22 * sin(time * 1.17 + ph * 1.7));
+
+    vec3 ext = exp(-vec3(0.10, 0.17, 0.28) * air);
+    return starColor(t) * (bright * disc * tw) * ext;
 }
 
 vec3 celestial(vec3 dir, vec3 sunDir, float time, float rain) {
@@ -184,7 +220,8 @@ vec3 celestial(vec3 dir, vec3 sunDir, float time, float rain) {
 #endif
 
     float night = smoothstep(0.02, -0.08, selev);
-    c += starField(dir, time) * night * vec3(0.55, 0.62, 0.80) * saturate(dir.y * 2.0);
+    float airMass = 1.0 / max(dir.y, 0.030);
+    c += starField(dir, time, airMass) * (night * smoothstep(-0.005, 0.020, dir.y));
     return c * (1.0 - rain * 0.95);
 }
 
@@ -263,8 +300,8 @@ vec3 endSky(vec3 dir, float time) {
     vec3 nebCol = mix(vec3(0.14, 0.04, 0.26), vec3(0.04, 0.17, 0.21), hue);
     sky += band * (0.10 + 1.8 * smoothstep(0.45, 0.80, neb)) * nebCol;
     sky += band * vec3(0.08, 0.05, 0.13);
-    float stars = starField(dir, time);
-    sky += stars * mix(vec3(0.40, 0.33, 0.55), vec3(0.65, 0.50, 0.90), band);
+    vec3 stars = starField(dir, time, 1.0);
+    sky += stars * mix(vec3(0.58, 0.48, 0.80), vec3(0.95, 0.72, 1.30), band);
     sky *= mix(1.0, 0.35, smoothstep(-0.10, -0.60, dir.y));
 
     float haze = pow(1.0 - abs(dir.y), 3.0);
