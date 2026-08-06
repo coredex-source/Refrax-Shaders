@@ -158,6 +158,26 @@ vec3 cloudScatter(float density, float lightOD, float cosT, float heightFrac,
     return sunC * (sun * CLOUD_SUN_GAIN) + ambC * (CLOUD_AMBIENT + 0.50 * heightFrac);
 }
 
+float cloudShadowSlice(vec3 worldPos, vec3 lightDir, vec2 wind, float rain, float strength) {
+#if CLOUD_MODE == 0
+    return 1.0;
+#else
+    float ly = lightDir.y;
+    if (ly < 0.06) return 1.0;
+
+    float y = CU_BOTTOM + CLOUD_THICKNESS * 0.5;
+    float travel = (y - worldPos.y) / ly;
+    if (travel <= 0.0) return 1.0;
+
+    vec3 p = worldPos + lightDir * min(travel, 8000.0);
+    p.y = y;
+    float od = cumulusDensity(p, wind, rain, 1) * CLOUD_THICKNESS * CLOUD_DENSITY;
+
+    float fade = smoothstep(0.06, 0.18, ly);
+    return mix(1.0, exp(-od), strength * fade);
+#endif
+}
+
 float cloudShadow(vec3 worldPos, vec3 lightDir, float time, float rain) {
 #if CLOUD_MODE == 0
     return 1.0;

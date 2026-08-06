@@ -291,6 +291,12 @@ const float centerDepthHalflife = 1.6;
 #define CLOUD_CIRRUS_CURL 0.55 // [0.00 0.15 0.30 0.45 0.55 0.70 0.90 1.20]
 
 #define CLOUD_SHADOW_STRENGTH 1.00 // [0.00 0.10 0.20 0.30 0.40 0.50 0.60 0.70 0.80 0.90 1.00]
+
+#define CLOUD_RAYS
+#define CLOUD_RAY_STRENGTH 1.00 // [0.00 0.10 0.20 0.30 0.40 0.50 0.60 0.70 0.80 0.90 1.00 1.25 1.50]
+#define CLOUD_RAY_DISTANCE 800.0 // [200.0 300.0 400.0 600.0 800.0 1000.0 1400.0 2000.0]
+#define CLOUD_RAY_STEPS 8 // [4 6 8 12 16 24]
+#define CLOUD_RAY_GAIN 1.00 // [0.00 0.25 0.50 0.75 1.00 1.50 2.00 3.00]
 #define FOG_BASE 0.0016 // [0.0000 0.0004 0.0008 0.0012 0.0016 0.0020 0.0025 0.0030 0.0040]
 #define FOG_RAIN_DENSITY 1.2 // [0.0 0.2 0.4 0.6 0.8 1.0 1.2 1.5 2.0 2.5 3.0]
 #define FOG_HEIGHT_FALLOFF 0.012 // [0.000 0.004 0.008 0.012 0.016 0.020 0.030 0.040]
@@ -483,6 +489,16 @@ const float centerDepthHalflife = 1.6;
 #ifdef WATER_CAUSTICS
   #if !defined WORLD_NETHER && !defined WORLD_END
     #define CAUSTICS_ACTIVE
+  #endif
+#endif
+
+#ifdef CLOUD_RAYS
+  #ifdef GOD_RAYS
+    #if CLOUD_MODE > 0
+      #if !defined WORLD_NETHER && !defined WORLD_END
+        #define CLOUD_RAYS_ACTIVE
+      #endif
+    #endif
   #endif
 #endif
 

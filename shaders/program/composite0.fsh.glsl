@@ -214,6 +214,24 @@ void main() {
             }
 #endif
             color += (accum / float(steps)) * vlCol * phase * media * maxD * VL_STRENGTH * (isEyeInWater == 1 ? WATER_COLOR * 3.0 : vec3(1.0));
+
+#ifdef CLOUD_RAYS_ACTIVE
+            if (isEyeInWater != 1 && lightDir.y > 0.06) {
+                float farD = skyMask > 0.5 ? CLOUD_RAY_DISTANCE : min(dist, CLOUD_RAY_DISTANCE);
+                float seg = farD - maxD;
+                if (seg > 0.5) {
+                    int csteps = PERF_SCALED_COUNT(CLOUD_RAY_STEPS, 4);
+                    vec2 rayWind = cloudWind(frameTimeCounter);
+                    float cdt = seg / float(csteps);
+                    float cacc = 0.0;
+                    for (int i = 0; i < csteps; i++) {
+                        vec3 p = dirW * (maxD + cdt * (float(i) + dither));
+                        cacc += cloudShadowSlice(cameraPosition + p, lightDir, rayWind, rainStrength, CLOUD_RAY_STRENGTH);
+                    }
+                    color += (cacc / float(csteps)) * vlCol * phase * media * min(seg, maxD) * VL_STRENGTH * CLOUD_RAY_GAIN;
+                }
+            }
+#endif
         }
     }
 #endif
