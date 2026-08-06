@@ -163,8 +163,21 @@ void main() {
     vec3 sunDir = normalize(mat3(gbufferModelViewInverse) * sunPosition);
     vec3 lightDir = normalize(mat3(gbufferModelViewInverse) * shadowLightPosition);
 
+    float auroraW = 0.0;
+#ifdef AURORA_ACTIVE
+    auroraW = smoothstep(0.04, -0.10, sunDir.y) * (1.0 - saturate(rainStrength * 1.6));
+  #ifdef AURORA_COLD_ONLY
+    auroraW *= smoothstep(0.45, -0.10, refraxBiomeTemp + BIOME_TEMP_NEUTRAL);
+  #endif
+#endif
+
+    float rainbowWet = 0.0;
+#ifdef RAINBOW_ACTIVE
+    rainbowWet = saturate(wetness) * smoothstep(0.32, 0.02, rainStrength);
+#endif
+
     if (depth >= 1.0 && !lodPixel) {
-        vec3 sky = dimensionSky(dirW, sunDir, fogColor, frameTimeCounter, rainStrength);
+        vec3 sky = dimensionSky(dirW, sunDir, fogColor, frameTimeCounter, rainStrength, cameraPosition, rainbowWet, auroraW);
 #ifdef BIOME_ATMOS_ACTIVE
         {
             BiomeAtmos biome = biomeAtmos(refraxBiomeTemp, refraxBiomeHumid, refraxBiomeSwamp, refraxBiomeAlpine);
@@ -288,6 +301,10 @@ void main() {
   #endif
     vec3 skyLight = skyAmbientDirectional(N, sunDir, rainStrength) * pow(lm.y, 2.2);
     skyLight += lightCol * 0.05 * saturate(0.6 - 0.4 * N.y) * pow(lm.y, 2.2);
+  #ifdef AURORA_ACTIVE
+    if (auroraW > 0.002)
+        skyLight += auroraAmbientWash(auroraW, albedo) * (0.55 + 0.45 * N.y) * pow(lm.y, 2.2);
+  #endif
 #endif
     vec3 blockLight = blockLightAt(scenePos, geomNW, lm.x);
 #ifdef WORLD_NETHER

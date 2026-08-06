@@ -55,15 +55,21 @@ float raymarchSSRCustom(sampler2D depthTex, vec3 viewPos, vec3 reflDirView, mat4
     return 0.0;
 }
 
+float ssrStepGrowth(float baseStep, float maxStepLen, int steps) {
+    return pow(maxStepLen / baseStep, 1.0 / float(max(steps - 1, 1)));
+}
+
 float raymarchSSR(sampler2D depthTex, vec3 viewPos, vec3 reflDirView, mat4 proj, mat4 projInv, float dither, vec2 jitterUV, out vec3 hitScreen) {
     int steps = PERF_SCALED_COUNT(SSR_STEPS, 6);
-    return raymarchSSRCustom(depthTex, viewPos, reflDirView, proj, projInv, dither, jitterUV, steps, 4, 0.40, 1.22, hitScreen);
+    const float baseStep = 0.40;
+    return raymarchSSRCustom(depthTex, viewPos, reflDirView, proj, projInv, dither, jitterUV, steps, 4, baseStep, ssrStepGrowth(baseStep, 40.0, steps), hitScreen);
 }
 
 float raymarchSSRFast(sampler2D depthTex, vec3 viewPos, vec3 reflDirView,
                       mat4 proj, mat4 projInv, float dither, vec2 jitterUV, out vec3 hitScreen) {
-    int steps = PERF_SCALED_COUNT(min(SSR_STEPS, 10), 4);
-    return raymarchSSRCustom(depthTex, viewPos, reflDirView, proj, projInv, dither, jitterUV, max(steps, 4), 2, 0.60, 1.42, hitScreen);
+    int steps = max(PERF_SCALED_COUNT(min(SSR_STEPS, 10), 4), 4);
+    const float baseStep = 0.60;
+    return raymarchSSRCustom(depthTex, viewPos, reflDirView, proj, projInv, dither, jitterUV, steps, 2, baseStep, ssrStepGrowth(baseStep, 14.0, steps), hitScreen);
 }
 
 #endif

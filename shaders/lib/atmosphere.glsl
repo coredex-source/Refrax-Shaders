@@ -201,7 +201,88 @@ vec3 starField(vec3 dir, float time, float airMass) {
     return starColor(t) * (bright * disc * tw) * ext;
 }
 
-vec3 celestial(vec3 dir, vec3 sunDir, float time, float rain) {
+#ifdef MILKY_WAY_ACTIVE
+const vec3 GALACTIC_AXIS = normalize(vec3(0.36, 0.58, -0.73));
+
+vec3 milkyWay(vec3 dir, float airMass) {
+    float axial = dot(dir, GALACTIC_AXIS);
+    float band = exp(-axial * axial * MILKY_WAY_WIDTH);
+    if (band < 0.003) return vec3(0.0);
+
+    float cloud = fbm3(dir * 4.3, 4);
+    float fine = fbm3(dir * 11.7 + 27.3, 3);
+    float lane = fbm3(dir * 6.1 - 51.7, 3);
+
+    float dust = smoothstep(0.36, 0.78, cloud) * (0.55 + 0.45 * fine);
+    dust *= 1.0 - smoothstep(0.44, 0.74, lane) * 0.78;
+
+    vec3 core = mix(vec3(0.66, 0.71, 0.88), vec3(0.94, 0.87, 0.74), smoothstep(0.28, 0.82, fine));
+    float ext = exp(-0.46 * max(airMass - 1.0, 0.0));
+    return core * ((0.055 + 1.30 * dust) * band * ext * MILKY_WAY_STRENGTH);
+}
+#endif
+
+#ifdef AURORA_ACTIVE
+vec3 auroraCurtain(vec3 dir, vec3 camPos, float time) {
+    float up = dir.y;
+    if (up < 0.045) return vec3(0.0);
+
+    int layers = PERF_SCALED_COUNT(AURORA_LAYERS, 3);
+    float span = 1.0 / float(max(layers - 1, 1));
+    float t = time * AURORA_SPEED;
+    vec3 acc = vec3(0.0);
+
+    for (int i = 0; i < layers; i++) {
+        float fi = float(i) * span;
+        float h = mix(115.0, 260.0, fi);
+        vec2 p = (camPos.xz + dir.xz * (h / up)) * 0.0017;
+        vec2 w = vec2(fbm3(vec3(p * 1.7, t * 0.031), 3),
+                      fbm3(vec3(p * 1.7 + 31.4, t * 0.027), 3)) - 0.5;
+        p += w * 0.62;
+        float sheet = smoothstep(0.50, 0.88, fbm3(vec3(p * 3.1, t * 0.017), 4));
+        sheet *= 1.0 - fi * 0.58;
+        acc += mix(vec3(0.16, 0.94, 0.42), vec3(0.66, 0.24, 0.90), smoothstep(0.12, 0.95, fi)) * sheet;
+    }
+    return acc * (smoothstep(0.045, 0.30, up) * AURORA_STRENGTH / float(layers));
+}
+
+vec3 auroraAmbientWash(float weight, vec3 albedo) {
+    vec3 wash = vec3(0.0025, 0.0092, 0.0052) * (weight * AURORA_STRENGTH * AURORA_AMBIENT);
+    float lum = luminance(albedo);
+    float chroma = max(albedo.r, max(albedo.g, albedo.b)) - min(albedo.r, min(albedo.g, albedo.b));
+    float pale = smoothstep(0.42, 0.78, lum) * (1.0 - smoothstep(0.10, 0.30, chroma));
+    return mix(wash, vec3(luminance(wash)), pale * AURORA_SNOW_SUPPRESS);
+}
+#endif
+
+#ifdef RAINBOW_ACTIVE
+vec3 rainbowSpectrum(float t) {
+    return vec3(smoothstep(0.46, 0.88, t) + 0.38 * (1.0 - smoothstep(0.00, 0.18, t)),
+                smoothstep(0.14, 0.50, t) * (1.0 - smoothstep(0.64, 1.00, t)),
+                1.0 - smoothstep(0.10, 0.46, t));
+}
+
+float rainbowBandMask(float p) {
+    return smoothstep(0.00, 0.16, p) * smoothstep(1.00, 0.86, p);
+}
+
+vec3 rainbowArc(vec3 dir, vec3 sunDir, float wet) {
+    float amt = wet * smoothstep(0.010, 0.170, sunDir.y) * smoothstep(-0.08, 0.10, dir.y);
+    if (amt < 0.002) return vec3(0.0);
+
+    float ang = degrees(acos(clamp(dot(dir, -sunDir), -1.0, 1.0)));
+
+    float p = (ang - 40.1) * (1.0 / 2.3);
+    vec3 bow = rainbowSpectrum(saturate(p)) * rainbowBandMask(saturate(p));
+
+    float s = saturate((ang - 50.4) * (1.0 / 3.5));
+    bow += rainbowSpectrum(1.0 - s) * (rainbowBandMask(s) * 0.30);
+
+    return bow * (amt * RAINBOW_STRENGTH);
+}
+#endif
+
+vec3 celestial(vec3 dir, vec3 sunDir, vec3 camPos, float time, float rain, float wet, float auroraW) {
     float selev = sunDir.y;
     vec3 c = vec3(0.0);
 
@@ -221,8 +302,19 @@ vec3 celestial(vec3 dir, vec3 sunDir, float time, float rain) {
 
     float night = smoothstep(0.02, -0.08, selev);
     float airMass = 1.0 / max(dir.y, 0.030);
-    c += starField(dir, time, airMass) * (night * smoothstep(-0.005, 0.020, dir.y));
-    return c * (1.0 - rain * 0.95);
+    float above = smoothstep(-0.005, 0.020, dir.y);
+    c += starField(dir, time, airMass) * (night * above);
+#ifdef MILKY_WAY_ACTIVE
+    c += milkyWay(dir, airMass) * (night * above);
+#endif
+#ifdef AURORA_ACTIVE
+    if (auroraW > 0.002) c += auroraCurtain(dir, camPos, time) * auroraW;
+#endif
+    c *= 1.0 - rain * 0.95;
+#ifdef RAINBOW_ACTIVE
+    c += rainbowArc(dir, sunDir, wet);
+#endif
+    return c;
 }
 
 
@@ -309,13 +401,13 @@ vec3 endSky(vec3 dir, float time) {
 }
 
 
-vec3 dimensionSky(vec3 dir, vec3 sunDir, vec3 fogCol, float time, float rain) {
+vec3 dimensionSky(vec3 dir, vec3 sunDir, vec3 fogCol, float time, float rain, vec3 camPos, float wet, float auroraW) {
 #if defined WORLD_NETHER
     return netherSky(dir, fogCol, time);
 #elif defined WORLD_END
     return endSky(dir, time);
 #else
-    return skyGradient(dir, sunDir, rain) + celestial(dir, sunDir, time, rain);
+    return skyGradient(dir, sunDir, rain) + celestial(dir, sunDir, camPos, time, rain, wet, auroraW);
 #endif
 }
 
