@@ -21,7 +21,7 @@ void main() {
     vec4 glint = texture(gtexture, uv) * vcolor;
     if (glint.a < alphaTestRef) discard;
     vec3 col = srgbToLinear(glint.rgb);
-    outGlint = vec4(col * col * glint.a * GLINT_STRENGTH, 1.0);
+    outGlint = vec4(col * col * glint.a * GLINT_STRENGTH, 0.0);
 #else
     discard;
 #endif

@@ -32,6 +32,9 @@ const vec4 colortex9ClearColor = vec4(0.0, 0.0, 0.0, 0.0);
 
 uniform sampler2D colortex0;
 uniform sampler2D colortex2;
+#if MC_VERSION >= 260100
+uniform sampler2D colortex7;
+#endif
 #ifdef VOXY
 uniform sampler2D colortex9;
 #endif
@@ -103,6 +106,9 @@ void main() {
                       && texture(depthtex0, ruv).r >= HAND_DEPTH_LIMIT;
 #ifdef LOD_ACTIVE
         if (lodWater) refrClear = texture(depthtex1, ruv).r >= 1.0 && texture(lodDepthTex1, ruv).r > lodDepth0;
+#endif
+#if MC_VERSION >= 260100
+        refrClear = refrClear && texture(colortex7, suv).a < 0.001 && texture(colortex7, ruv).a < 0.001;
 #endif
         if (refrClear)
             suv = clamp(ruv, vec2(0.001), vec2(0.999));
