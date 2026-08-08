@@ -3,6 +3,7 @@
 #define REFRAX_COMMON
 
 const float PI = 3.14159265359;
+#define HAND_DEPTH_LIMIT 0.56
 #define saturate(x) clamp(x, 0.0, 1.0)
 
 float luminance(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }

@@ -6,6 +6,9 @@
 #include "/lib/water.glsl"
 #include "/lib/shadows.glsl"
 #include "/lib/dh.glsl"
+#ifdef UNDERWATER_MOTES
+  #include "/lib/underwater.glsl"
+#endif
 #ifdef LPV_FOG
   #ifdef COLORED_LIGHTING
     #include "/lib/voxel.glsl"
@@ -39,7 +42,7 @@ uniform sampler2D depthtex0, depthtex1;
   #endif
 #endif
 uniform sampler2D shadowtex0, shadowtex1, shadowcolor0;
-uniform mat4 gbufferModelViewInverse, gbufferProjectionInverse;
+uniform mat4 gbufferModelView, gbufferModelViewInverse, gbufferProjection, gbufferProjectionInverse;
 uniform mat4 shadowModelView, shadowProjection;
 uniform vec3 cameraPosition;
 uniform vec3 sunPosition;
@@ -90,16 +93,14 @@ void main() {
 #ifdef LOD_ACTIVE
         vec3 frontView = lodWater ? screenToView(vec3(uv, lodDepth0), lodProjectionInverse)
                                   : screenToView(vec3(uv, depth0), gbufferProjectionInverse);
-        vec3 backView = lodWater ? screenToView(vec3(uv, texture(lodDepthTex1, suv).r), lodProjectionInverse)
-                                 : screenToView(vec3(uv, depth1), gbufferProjectionInverse);
 #else
         vec3 frontView = screenToView(vec3(uv, depth0), gbufferProjectionInverse);
-        vec3 backView = screenToView(vec3(uv, depth1), gbufferProjectionInverse);
 #endif
-        float viewDist = length(frontView);
-        float layerDist = abs(length(backView) - viewDist);
-        vec2 ruv = suv + wn.xz * (min(layerDist, 8.0) / max(viewDist, 1.0)) * 0.12 * REFRACTION_INTENSITY;
-        bool refrClear = texture(depthtex1, ruv).r > depth0;
+        vec3 viewNormal = normalize(mat3(gbufferModelView) * wn);
+        vec2 projScale = vec2(gbufferProjection[0][0], gbufferProjection[1][1]) * 0.5;
+        vec2 ruv = suv + waterRefractOffset(frontView, viewNormal, projScale);
+        bool refrClear = texture(depthtex1, ruv).r > depth0
+                      && texture(depthtex0, ruv).r >= HAND_DEPTH_LIMIT;
 #ifdef LOD_ACTIVE
         if (lodWater) refrClear = texture(depthtex1, ruv).r >= 1.0 && texture(lodDepthTex1, ruv).r > lodDepth0;
 #endif
@@ -112,11 +113,13 @@ void main() {
     }
     if (isEyeInWater == 1) {
         float eyeSkyPre = float(eyeBrightnessSmooth.y) / 240.0;
+        vec2 p = uv * vec2(viewWidth / max(viewHeight, 1.0), 1.0);
+        float t = frameTimeCounter;
         vec2 wave = vec2(
-            sin(uv.y * 32.0 + frameTimeCounter * 1.9) + sin(uv.y * 13.0 - frameTimeCounter * 1.2),
-            cos(uv.x * 29.0 + frameTimeCounter * 1.6) + cos(uv.x * 11.0 + frameTimeCounter * 1.1)
+            sin(p.y * 58.0 + p.x * 19.0 + t * 2.3) + 0.5 * sin(p.y * 121.0 - p.x * 37.0 - t * 3.1),
+            cos(p.x * 54.0 - p.y * 23.0 + t * 2.0) + 0.5 * cos(p.x * 113.0 + p.y * 41.0 - t * 2.7)
         );
-        suv = clamp(suv + wave * (0.0014 + 0.0007 * eyeSkyPre) * UNDERWATER_DISTORTION, vec2(0.001), vec2(0.999));
+        suv = clamp(suv + wave * (0.00055 + 0.00030 * eyeSkyPre) * UNDERWATER_DISTORTION, vec2(0.001), vec2(0.999));
         depth0 = texture(depthtex0, suv).r;
 #ifdef LOD_ACTIVE
         lodDepth0 = texture(lodDepthTex0, suv).r;
@@ -210,14 +213,20 @@ void main() {
         vec3 ambient = skyAmbient(sunDir, rainStrength) * (0.06 + eyeSky * 0.24) + vec3(0.002, 0.004, 0.007);
         vec3 scatter = fogCol * (0.18 + upView * eyeSky * 0.18 + lightBeam * 0.54) + ambient * 0.10;
 
-        float shallow = (1.0 - skyMask) * (1.0 - saturate(d / 30.0)) * eyeSky * (1.0 - rainStrength * 0.45);
-        float caustic = sin(scenePos.x * 0.74 + frameTimeCounter * 1.4) * sin(scenePos.z * 0.53 - frameTimeCounter * 1.1);
-        caustic = pow(saturate(caustic * 0.5 + 0.5), 6.0) * shallow;
-
         float localContrast = mix(0.56, 0.86, eyeSky) * (1.0 - fogAmt * 0.18);
         color = color * transmittance * vec3(0.54, 0.68, 1.02) * localContrast + scatter * (fogAmt * 0.40);
-        color += fogCol * caustic * 0.055;
         if (skyMask > 0.5) color = mix(color, fogCol * (0.26 + lightBeam * 0.38 + upView * eyeSky * 0.12), 0.46);
+
+#ifdef UNDERWATER_MOTES
+  #ifdef WORLD_END
+        vec3 moteLight = endLightColor();
+  #else
+        vec3 moteLight = sunColor(sunDir.y) + moonColor(-sunDir.y);
+  #endif
+        color += underwaterMotes(shadowtex1, dirW, cameraPosition, min(dist, MOTE_DISTANCE),
+                                 frameTimeCounter, dither, shadowModelView, shadowProjection,
+                                 moteLight, eyeSky) * MOTE_STRENGTH;
+#endif
     } else if (skyMask < 0.5) {
 #if defined WORLD_NETHER
         vec3 fogCol = netherSky(dirW, fogColor, frameTimeCounter);

@@ -135,6 +135,14 @@ void main() {
     }
     if (emission <= 0.0 && isEmitter(blockId))
         emission = emitterEmission(blockId, luminance(albedo.rgb));
+#ifdef EMISSIVE_ORES
+    if (emission <= 0.0 && isEmissiveOre(blockId))
+        emission = oreEmission(albedo.rgb);
+#endif
+#ifdef EMISSIVE_FOLIAGE
+    if (emission <= 0.0 && isEmissiveFoliage(blockId))
+        emission = foliageEmission(albedo.rgb);
+#endif
     if (mat.roughness > 0.85) {
         if (blockId == 10040) { mat.roughness = 0.28; mat.f0 = 0.045; }
         else if (blockId == 10041) { mat.roughness = 0.12; mat.f0 = 0.055; }

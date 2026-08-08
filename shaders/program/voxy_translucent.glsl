@@ -41,12 +41,24 @@ void voxy_emitFragment(VoxyFragmentParameters p) {
     vec3 sunDir = normalize(refraxSunDir);
     vec3 lightDir = normalize(refraxLightDir);
     vec3 viewDirW = normalize(-scenePos);
+    vec3 worldPos = scenePos + refraxCameraPosition;
+    vec3 geomN = N;
+    float waterRoughness = WATER_ROUGHNESS;
+    float waterCrest = 0.0;
+    float waterFlow = 0.0;
+    float waterFootprint = clamp(dist * 0.0025, 0.015, 2.0);
 
     if (water && N.y > 0.5) {
-        vec3 worldPos = scenePos + refraxCameraPosition;
         float vDot = abs(dot(N, viewDirW));
-        N = waterNormal(noisetex, worldPos.xz, refraxFrameTimeCounter, vDot, lm.y, rainStrength, dist);
+        vec2 drift = vec2(0.0);
+        N = waterSurfaceNormalFlow(noisetex, worldPos, drift, refraxFrameTimeCounter, vDot, lm.y, rainStrength, waterFlow, waterFootprint, waterRoughness, waterCrest);
     }
+#ifdef WATER_FLOW
+    else if (water && abs(N.y) < 0.5) {
+        waterFlow = 1.0;
+        N = waterfallSurfaceNormal(noisetex, worldPos, N, refraxFrameTimeCounter, lm.y, rainStrength, waterFlow, waterFootprint, waterRoughness, waterCrest);
+    }
+#endif
 
     float NoL = saturate(dot(N, lightDir));
 #if defined WORLD_NETHER
@@ -71,7 +83,7 @@ void voxy_emitFragment(VoxyFragmentParameters p) {
     vec3 minAmb = vec3(0.010, 0.011, 0.014) * MIN_AMBIENT;
 
     float fres = water ? waterFresnel(dot(viewDirW, N)) : fresnelSchlick(saturate(dot(viewDirW, N)), vec3(0.02)).x;
-    vec3 reflDirW = reflect(-viewDirW, N);
+    vec3 reflDirW = water ? waterReflectionDirection(viewDirW, N) : reflect(-viewDirW, N);
 #if defined WORLD_NETHER
     vec3 refl = dimensionSky(reflDirW, sunDir, VOXY_NETHER_FOG, refraxFrameTimeCounter, rainStrength);
 #elif defined WORLD_END
@@ -80,11 +92,15 @@ void voxy_emitFragment(VoxyFragmentParameters p) {
     vec3 refl = skyGradient(reflDirW, sunDir, rainStrength) * mix(0.08, 1.0, lm.y * lm.y);
 #endif
 
-    float glintRough = water ? WATER_ROUGHNESS + saturate(dist / 96.0) * 0.018 : 0.03;
+    float glintRough = water ? waterRoughness : 0.03;
     vec3 sunSpecShape = water
-        ? waterDiscLightSpecular(N, viewDirW, lightDir, SUN_GLINT_RADIUS, glintRough, vec3(0.02))
+        ? vec3(waterSunGlint(N, viewDirW, lightDir))
         : discLightSpecular(N, viewDirW, lightDir, SUN_GLINT_RADIUS, glintRough, vec3(0.02));
-    vec3 sunSpec = sunSpecShape * lightCol * shadow * (water ? SUN_GLINT_STRENGTH : PBR_GLINT_STRENGTH);
+    vec3 sunSpec = sunSpecShape * lightCol * shadow * (water ? WATER_GLINT_STRENGTH : PBR_GLINT_STRENGTH);
+    if (water) {
+        refl = waterReflectionColor(refl);
+        sunSpec = waterGlintColor(sunSpec);
+    }
 
     vec3 lit;
     float alpha;
@@ -94,11 +110,19 @@ void voxy_emitFragment(VoxyFragmentParameters p) {
         float waterDepth = max(length(backView) - dist, 0.0);
         vec3 trans = waterTransmittanceTinted(tint, waterDepth);
 
-        vec3 scatter = mix(WATER_COLOR * WATER_COLOR, srgbToLinear(tint) * 0.20, 0.25) * 0.80;
-        vec3 body = scatter * (lightCol * NoL * shadow * 0.22 + skyLight * 0.92 + blockLight * 0.52);
-        body = mix(body, body * 0.42, saturate(1.0 - trans.g));
-        lit = mix(body, refl, fres) + sunSpec * 1.5;
+        vec3 bodyLighting = lightCol * NoL * shadow * 0.22 + skyLight * 0.92 + blockLight * 0.52;
+        vec3 body = waterBodyColor(tint, trans, bodyLighting);
+        lit = mix(body, refl, fres) + sunSpec;
         alpha = waterSurfaceAlpha(trans, fres);
+#ifdef WATER_FOAM
+        float waterSlope = geomN.y > 0.5 ? length(N.xz) / max(N.y, 0.1) : 0.0;
+        float foam = waterFoamMask(noisetex, worldPos.xz, refraxFrameTimeCounter, waterDepth, waterCrest, waterSlope, rainStrength, waterFlow);
+        if (foam > 0.001) {
+            vec3 foamCol = (skyLight + lightCol * shadow * 0.35) * vec3(0.98, 1.02, 1.08);
+            lit = mix(lit, foamCol, foam);
+            alpha = max(alpha, foam * 0.92);
+        }
+#endif
         outWaterData = vec4(N, 2.0);
     } else {
         vec3 albedo = srgbToLinear(base.rgb);

@@ -11,6 +11,13 @@
 #include "/lib/ssr.glsl"
 #include "/lib/labpbr.glsl"
 #include "/lib/dh.glsl"
+#include "/lib/wetness.glsl"
+
+#ifdef WATER_RAIN_RIPPLES
+  #if defined WATER && !defined WORLD_NETHER && !defined WORLD_END
+    #define WATER_RIPPLES_ACTIVE
+  #endif
+#endif
 
 uniform sampler2D gtexture;
 uniform sampler2D lightmap;
@@ -45,6 +52,9 @@ uniform vec3 relativeEyePosition;
 #endif
 #ifdef ENTITY
 uniform vec4 entityColor;
+#endif
+#ifdef WATER_RIPPLES_ACTIVE
+uniform float refraxSnowBiome;
 #endif
 
 in vec2 uv;
@@ -164,6 +174,7 @@ void main() {
     return;
 #else
     vec3 N = normalize(normalW);
+    vec3 geomN = N;
     vec3 sunDir = normalize(mat3(gbufferModelViewInverse) * sunPosition);
     vec3 lightDir = normalize(mat3(gbufferModelViewInverse) * shadowLightPosition);
     float dither = ignAnim(gl_FragCoord.xy, frameCounter);
@@ -195,10 +206,48 @@ void main() {
   #ifdef WATER
     bool realWater = realWaterFwd;
     vec3 worldPos = scenePos + cameraPosition;
+    float waterRoughness = WATER_ROUGHNESS;
+    float waterCrest = 0.0;
+    float waterFlow = 0.0;
+    float waterFootprint = max(max(length(dFdx(scenePos)), length(dFdy(scenePos))), 0.005);
     if (realWater && N.y > 0.5) {
         float vDot = abs(dot(N, normalize(-scenePos)));
-        N = waterNormal(noisetex, worldPos.xz, frameTimeCounter, vDot, lmcoord.y, rainStrength, length(scenePos));
+        float waterDist = length(scenePos);
+        vec2 drift = vec2(0.0);
+    #ifdef WATER_FLOW
+        {
+            vec3 surfN = normalize(cross(dFdx(scenePos), dFdy(scenePos)));
+            if (surfN.y < 0.0) surfN = -surfN;
+            vec2 grad = surfN.xz / max(surfN.y, 0.25);
+            waterFlow = min(length(grad), 0.9);
+            if (waterFlow > 0.02)
+                drift = grad * (frameTimeCounter * WAVE_SPEED * FLOW_SPEED * 1.35);
+        }
+    #endif
+        N = waterSurfaceNormalFlow(noisetex, worldPos, drift, frameTimeCounter, vDot, lmcoord.y, rainStrength, waterFlow, waterFootprint, waterRoughness, waterCrest);
+    #ifdef WATER_RIPPLES_ACTIVE
+        {
+            float ripple = (1.0 - smoothstep(16.0, 40.0, waterDist))
+                         * smoothstep(0.35, 0.85, lmcoord.y)
+                         * smoothstep(0.05, 0.60, rainStrength)
+                         * (1.0 - refraxSnowBiome) * RAIN_RIPPLE_STRENGTH;
+            if (ripple > 0.002) {
+                const float e = 0.07;
+                float h0 = puddleRippleHeight(worldPos.xz, frameTimeCounter);
+                float hx = puddleRippleHeight(worldPos.xz + vec2(e, 0.0), frameTimeCounter);
+                float hz = puddleRippleHeight(worldPos.xz + vec2(0.0, e), frameTimeCounter);
+                vec2 slope = vec2(h0 - hx, h0 - hz) / e;
+                N = normalize(N + vec3(slope.x, 0.0, slope.y) * (0.005 * ripple));
+            }
+        }
+    #endif
     }
+  #ifdef WATER_FLOW
+    else if (realWater && abs(N.y) < 0.5) {
+        waterFlow = 1.0;
+        N = waterfallSurfaceNormal(noisetex, worldPos, N, frameTimeCounter, lmcoord.y, rainStrength, waterFlow, waterFootprint, waterRoughness, waterCrest);
+    }
+  #endif
   #endif
 
     float NoL = saturate(dot(N, lightDir));
@@ -249,7 +298,7 @@ void main() {
   #endif
     float fres = realWater ? waterFresnel(dot(viewDirW, N)) : luminance(surfaceFresnel);
 
-    vec3 reflDirW = reflect(-viewDirW, N);
+    vec3 reflDirW = realWater ? waterReflectionDirection(viewDirW, N) : reflect(-viewDirW, N);
   #if defined WORLD_NETHER || defined WORLD_END
     vec3 refl = dimensionSky(reflDirW, sunDir, fogColor, frameTimeCounter, rainStrength);
   #else
@@ -273,8 +322,8 @@ void main() {
             }
         }
     }
-    float glintRough = WATER_ROUGHNESS + saturate(length(scenePos) / 96.0) * 0.018;
-    vec3 glintF0 = vec3(0.02);
+    float glintRough = waterRoughness;
+    vec3 glintF0 = vec3(WATER_FRESNEL);
   #if defined PBR_MATERIALS && !defined PARTICLE
     if (!realWater) {
         glintRough = max(mat.roughness * 0.5, 0.03);
@@ -282,11 +331,15 @@ void main() {
     }
   #else
     if (!realWater) glintRough = 0.03;
-  #endif
+    #endif
     vec3 sunSpecShape = realWater
-        ? waterDiscLightSpecular(N, viewDirW, lightDir, SUN_GLINT_RADIUS, glintRough, glintF0)
+        ? vec3(waterSunGlint(N, viewDirW, lightDir))
         : discLightSpecular(N, viewDirW, lightDir, SUN_GLINT_RADIUS, glintRough, glintF0);
-    vec3 sunSpec = sunSpecShape * lightCol * shadow * (realWater ? SUN_GLINT_STRENGTH : PBR_GLINT_STRENGTH);
+    vec3 sunSpec = sunSpecShape * lightCol * shadow * (realWater ? WATER_GLINT_STRENGTH : PBR_GLINT_STRENGTH);
+    if (realWater) {
+        refl = waterReflectionColor(refl);
+        sunSpec = waterGlintColor(sunSpec);
+    }
 
     if (realWater) {
         vec2 suv = gl_FragCoord.xy / vec2(viewWidth, viewHeight);
@@ -303,11 +356,19 @@ void main() {
         float waterDepth = max(backDist - length(scenePos), 0.0);
         vec3 trans = waterTransmittanceTinted(vcolor.rgb, waterDepth);
 
-        vec3 scatter = mix(WATER_COLOR * WATER_COLOR, srgbToLinear(vcolor.rgb) * 0.20, 0.25) * 0.80;
-        vec3 body = scatter * (lightCol * NoL * shadow * 0.22 + skyLight * 0.92 + blockLight * 0.52);
-        body = mix(body, body * 0.42, saturate(1.0 - trans.g));
-        lit = mix(body, refl, fres) + sunSpec * 1.5;
+        vec3 bodyLighting = lightCol * NoL * shadow * 0.22 + skyLight * 0.92 + blockLight * 0.52;
+        vec3 body = waterBodyColor(vcolor.rgb, trans, bodyLighting);
+        lit = mix(body, refl, fres) + sunSpec;
         alpha = waterSurfaceAlpha(trans, fres);
+#ifdef WATER_FOAM
+        float waterSlope = geomN.y > 0.5 ? length(N.xz) / max(N.y, 0.1) : 0.0;
+        float mask = waterFoamMask(noisetex, worldPos.xz, frameTimeCounter, waterDepth, waterCrest, waterSlope, rainStrength, waterFlow);
+        if (mask > 0.001) {
+            vec3 foamCol = (skyLight + lightCol * shadow * 0.35) * vec3(0.98, 1.02, 1.08);
+            lit = mix(lit, foamCol, mask);
+            alpha = max(alpha, mask * 0.92);
+        }
+#endif
         outWaterData = vec4(N, 2.0);
     } else {
       #if defined PBR_MATERIALS && !defined PARTICLE
