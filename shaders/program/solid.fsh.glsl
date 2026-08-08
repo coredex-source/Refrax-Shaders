@@ -36,6 +36,9 @@ in vec3 scenePos;
 flat in int blockId;
 flat in vec2 tileBase;
 flat in vec2 tileSize;
+#ifdef TERRAIN
+flat in vec2 tileAlphaRange;
+#endif
 
 #ifdef HAND
 /* RENDERTARGETS: 1,2,3,10,0 */
@@ -67,7 +70,7 @@ void main() {
 #endif
         vec3 portal = endPortalColor(scenePos, cameraPosition, N, frameTimeCounter);
         outAlbedo = vec4(linearToSrgb(portal), 1.0);
-        outNormal = vec4(N, 0.55);
+        outNormal = packSurfaceData(N, 0.55, SURF_STATIC);
         outMaterial = vec4(lmcoord, 1.0, 0.0);
         outExtra = vec4(0.0);
         return;
@@ -82,17 +85,8 @@ void main() {
     bool terrainFoliage = false;
     bool alphaCutoutTile = false;
 #ifdef TERRAIN
-    float a00 = texture(gtexture, tileBase + tileSize * vec2(0.125, 0.125)).a;
-    float a10 = texture(gtexture, tileBase + tileSize * vec2(0.500, 0.125)).a;
-    float a20 = texture(gtexture, tileBase + tileSize * vec2(0.875, 0.125)).a;
-    float a01 = texture(gtexture, tileBase + tileSize * vec2(0.125, 0.500)).a;
-    float a11 = texture(gtexture, tileBase + tileSize * vec2(0.500, 0.500)).a;
-    float a21 = texture(gtexture, tileBase + tileSize * vec2(0.875, 0.500)).a;
-    float a02 = texture(gtexture, tileBase + tileSize * vec2(0.125, 0.875)).a;
-    float a12 = texture(gtexture, tileBase + tileSize * vec2(0.500, 0.875)).a;
-    float a22 = texture(gtexture, tileBase + tileSize * vec2(0.875, 0.875)).a;
-    float tileMinAlpha = min(min(min(a00, a10), min(a20, a01)), min(min(a11, a21), min(a02, min(a12, a22)))) * vcolor.a;
-    float tileMaxAlpha = max(max(max(a00, a10), max(a20, a01)), max(max(a11, a21), max(a02, max(a12, a22)))) * vcolor.a;
+    float tileMinAlpha = tileAlphaRange.x * vcolor.a;
+    float tileMaxAlpha = tileAlphaRange.y * vcolor.a;
     alphaCutoutTile = tileMinAlpha < 0.05 && tileMaxAlpha > 0.95;
     terrainFoliage = isFoliage(blockId) || alphaCutoutTile;
     if (alphaCutoutTile) alphaRef = max(alphaRef, 0.5);
@@ -128,7 +122,24 @@ void main() {
         float pomSlopeW;
         float pomFade = smoothstep(64.0, 96.0, length(scenePos));
         texcoord = pomOffset(normals, texcoord, tileBase, tileSize, viewDirT, uvDx, uvDy, pomFade, pomHeight, pomSlopeN, pomSlopeW);
-        pomShadow = pomDirectShadow(normals, texcoord, tileBase, tileSize, lightDirT, uvDx, uvDy, pomHeight, pomFade);
+        if (lmcoord.y > 0.03)
+            pomShadow = pomDirectShadow(normals, texcoord, tileBase, tileSize, lightDirT, uvDx, uvDy, pomHeight, pomFade);
+      #if POM_DEBUG > 0
+        {
+            float span = pomPixelSpan(normals, tileSize, viewDirT, uvDx, uvDy, pomFade);
+            float keep = pomSpanKeep(span);
+        #if POM_DEBUG == 1
+            float t = float(pomLayerCount(span * keep)) / float(POM_SAMPLES * 3);
+            outAlbedo = vec4(t, 1.0 - t, keep <= 0.0 ? 1.0 : 0.0, 1.0);
+        #else
+            outAlbedo = vec4(keep <= 0.0 ? vec3(1.0, 0.0, 0.0) : mix(vec3(0.0, 0.0, 1.0), vec3(0.0, 1.0, 0.0), keep), 1.0);
+        #endif
+            outNormal = packSurfaceData(normalW, 1.0, SURF_STATIC);
+            outMaterial = vec4(lmcoord, 1.0, 0.0);
+            outExtra = vec4(0.0);
+            return;
+        }
+      #endif
       #endif
         vec4 nTex = textureGrad(normals, texcoord, uvDx, uvDy);
         if (nTex.r + nTex.g > 0.0005) {
@@ -172,6 +183,14 @@ void main() {
     if (isFoliage(blockId) && mat.sss <= 0.0) mat.sss = FOLIAGE_SSS;
     if (emission <= 0.0 && isEmitter(blockId))
         emission = emitterEmission(blockId, luminance(albedo.rgb));
+#ifdef EMISSIVE_ORES
+    if (emission <= 0.0 && isEmissiveOre(blockId))
+        emission = oreEmission(albedo.rgb);
+#endif
+#ifdef EMISSIVE_FOLIAGE
+    if (emission <= 0.0 && isEmissiveFoliage(blockId))
+        emission = foliageEmission(albedo.rgb);
+#endif
     if (emission <= 0.0 && blockId == 0)
         emission = inferredEmission(albedo.rgb, lmcoord.x);
     applyFallbackMaterial(blockId, mat);
@@ -182,7 +201,7 @@ void main() {
     vec4 dbgN = textureGrad(normals, texcoord, uvDx, uvDy);
     vec4 dbgS = textureGrad(specular, texcoord, uvDx, uvDy);
     outAlbedo = vec4(fract(scenePos.x / 8.0) < 0.5 ? dbgN.rgb : dbgS.rgb, 1.0);
-    outNormal = vec4(normalize(normalW), 1.0);
+    outNormal = packSurfaceData(normalW, 1.0, SURF_STATIC);
     outMaterial = vec4(lmcoord, 1.0, 0.0);
     outExtra = vec4(mat.sss, mat.porosity, 0.0, 0.0);
     return;
@@ -196,7 +215,7 @@ void main() {
 #endif
 
     outAlbedo = vec4(albedo.rgb, pomShadow);
-    outNormal = vec4(N, packSurface(emission, dynamicSurface));
+    outNormal = packSurfaceData(N, emission, dynamicSurface);
     outMaterial = vec4(lmcoord, mat.roughness, mat.f0);
     outExtra = vec4(mat.sss, mat.porosity, mat.anisotropy, packCoating(mat.clearcoat, mat.thinFilm));
 }

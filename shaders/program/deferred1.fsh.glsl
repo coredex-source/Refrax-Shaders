@@ -1,6 +1,10 @@
 /* Refrax — program/deferred1.fsh.glsl */
 
 #include "/lib/settings.glsl"
+#ifdef CONTACT_SHADOW_HIZ_ACTIVE
+  #define HIZ_READ
+  #include "/lib/hiz.glsl"
+#endif
 #include "/lib/common.glsl"
 #include "/lib/blockid.glsl"
 #include "/lib/atmosphere.glsl"
@@ -83,10 +87,10 @@ uniform sampler2D colortex7;
 #endif
 
 #if REFLECTION_MODE > 0 || RAIN_PUDDLE_REFLECTIONS == 2
-vec3 ssrReflection(vec3 viewPos, vec3 reflDirW, vec3 fallback, float dither, vec2 ssrJitter, vec2 viewTexel) {
+vec3 ssrReflection(vec3 viewPos, vec3 reflDirW, vec3 fallback, float dither, vec2 ssrJitter, vec2 viewTexel, float quality) {
     vec3 reflDirV = mat3(gbufferModelView) * reflDirW;
     vec3 hit;
-    float hitS = raymarchSSR(depthtex0, viewPos, reflDirV, gbufferProjection, gbufferProjectionInverse, dither, ssrJitter, hit);
+    float hitS = raymarchSSR(depthtex0, ivec2(viewWidth, viewHeight), viewPos, reflDirV, gbufferProjection, gbufferProjectionInverse, dither, ssrJitter, quality, hit);
     if (hitS <= 0.0) return fallback;
     vec3 hitView = screenToView(hit, gbufferProjectionInverse);
     vec3 hitScene = (gbufferModelViewInverse * vec4(hitView, 1.0)).xyz;
@@ -98,21 +102,31 @@ vec3 ssrReflection(vec3 viewPos, vec3 reflDirW, vec3 fallback, float dither, vec
 #endif
 
 #ifdef SSR_ACCUM_ACTIVE
-vec3 ssrAccumulate(vec3 current, vec3 scenePos, vec2 viewTexel) {
+bool ssrHistory(vec3 scenePos, vec2 viewTexel, out vec3 histColor, out float edge) {
+    histColor = vec3(0.0);
+    edge = 0.0;
     vec3 prevUV = reprojectScene(scenePos, gbufferPreviousModelView, gbufferPreviousProjection, cameraPosition, previousCameraPosition);
-    if (clamp(prevUV.xy, 0.0, 1.0) != prevUV.xy) return current;
+    if (clamp(prevUV.xy, 0.0, 1.0) != prevUV.xy) return false;
     vec4 hist = texture(colortex15, historyUV(prevUV.xy, viewTexel));
-    if (hist.a <= 0.0 || hist.a > 1e4 || any(isnan(hist))) return current;
+    if (hist.a <= 0.0 || hist.a > 1e4 || any(isnan(hist))) return false;
     float prevKey = length(scenePos + cameraPosition - previousCameraPosition);
-    if (abs(hist.a - prevKey) > prevKey * 0.06 + 0.05) return current;
+    if (abs(hist.a - prevKey) > prevKey * 0.06 + 0.05) return false;
     vec2 border = min(prevUV.xy, 1.0 - prevUV.xy);
-    float edge = saturate(min(border.x, border.y) * 24.0);
-    return mix(current, clamp(hist.rgb, vec3(0.0), vec3(64.0)), SSR_ACCUM_BLEND * edge);
+    histColor = clamp(hist.rgb, vec3(0.0), vec3(64.0));
+    edge = saturate(min(border.x, border.y) * 24.0);
+    return true;
+}
+
+vec3 ssrAccumulate(vec3 current, vec3 scenePos, vec2 viewTexel) {
+    vec3 histColor;
+    float edge;
+    if (!ssrHistory(scenePos, viewTexel, histColor, edge)) return current;
+    return mix(current, histColor, SSR_ACCUM_BLEND * edge);
 }
 #endif
 
 vec3 blockLightAt(vec3 pos, vec3 N, float lmBlock) {
-    vec3 fallback = FALLBACK_BLOCKLIGHT * pow(lmBlock, 3.0) * 1.85;
+    vec3 fallback = FALLBACK_BLOCKLIGHT * pow3(lmBlock) * 1.85;
 #ifdef WORLD_NETHER
     fallback *= NETHER_FALLBACK_SCALE;
 #endif
@@ -185,7 +199,7 @@ void main() {
             sky *= mix(vec3(1.0), biome.tint, band);
         }
 #endif
-        vec4 clouds = texture(colortex13, fsrRegionUV(uv, viewTexel));
+        vec4 clouds = texture(colortex13, cloudRegionUV(uv, viewTexel));
         sky = sky * clouds.a + clouds.rgb;
 #ifdef THUNDER_ACTIVE
         sky += (clouds.rgb * 1.6 + sky * 0.25) * thunderSkyGlow(lightningBoltPosition);
@@ -202,14 +216,25 @@ void main() {
     vec3 albedo = srgbToLinear(c1.rgb);
     float pomShadow = c1.a;
     vec4 c2 = texture(colortex2, uv);
-    vec3 N = normalize(c2.rgb);
-    float emission = surfaceEmission(c2.a);
-    float dynamicSurface = surfaceDynamic(c2.a);
+    vec3 N = unpackSurfaceNormal(c2);
+    float emission = unpackSurfaceEmission(c2);
+    float dynamicSurface = unpackSurfaceDynamic(c2);
     vec4 c3 = texture(colortex3, uv);
     vec2 lm = c3.xy;
     float roughness = c3.z;
     float f0raw = c3.w;
-    float ao = texture(colortex6, fsrRegionUV(uv, viewTexel)).r;
+#if AO_RES > 1
+    float ao;
+    {
+        vec2 aoRes = vec2(viewWidth, viewHeight) * AO_REGION_SCALE;
+        vec2 nearestUV = (floor(uv * aoRes) + 0.5) / aoRes;
+        float zAO = screenToView(vec3(nearestUV, texture(depthtex0, nearestUV).r), gbufferProjectionInverse).z;
+        float w = exp2(-abs(viewPos.z - zAO) * 2.0);
+        ao = mix(1.0, texture(colortex6, aoRegionUV(uv, viewTexel)).r, w);
+    }
+#else
+    float ao = texture(colortex6, aoRegionUV(uv, viewTexel)).r;
+#endif
     vec4 extra = texture(colortex10, uv);
     float sss = extra.r;
     float porosity = extra.g;
@@ -291,13 +316,25 @@ void main() {
 #elif defined WORLD_END
     lightCol = endLightColor();
     shadow = getShadow(scenePos, N, NoL, dither, shadowModelView, shadowProjection, shadowtex0, shadowtex1, shadowcolor0);
+  #ifdef CONTACT_SHADOWS_ACTIVE
+    if (NoL > 0.0 && !lodPixel && luminance(shadow) > 0.002)
+        shadow *= contactShadow(depthtex0, ivec2(viewWidth, viewHeight), viewPos, mat3(gbufferModelView) * N,
+                                normalize(shadowLightPosition), NoL, dither,
+                                gbufferProjection, gbufferProjectionInverse);
+  #endif
     vec3 skyLight = endAmbient(N);
 #else
     lightCol = (sunColor(sunDir.y) + moonColor(-sunDir.y)) * (1.0 - rainStrength * 0.9);
     shadow = getShadow(scenePos, N, NoL, dither, shadowModelView, shadowProjection, shadowtex0, shadowtex1, shadowcolor0);
+  #ifdef CONTACT_SHADOWS_ACTIVE
+    if (NoL > 0.0 && !lodPixel && luminance(shadow) > 0.002)
+        shadow *= contactShadow(depthtex0, ivec2(viewWidth, viewHeight), viewPos, mat3(gbufferModelView) * N,
+                                normalize(shadowLightPosition), NoL, dither,
+                                gbufferProjection, gbufferProjectionInverse);
+  #endif
   #ifdef CLOUD_SHADOWS
     if (NoL > 0.0 && shadow.g > 0.001)
-        shadow *= cloudShadow(scenePos + cameraPosition, lightDir, frameTimeCounter, rainStrength);
+        shadow *= cloudShadow(scenePos + cameraPosition, cameraPosition, lightDir, frameTimeCounter, rainStrength);
   #endif
     vec3 skyLight = skyAmbientDirectional(N, sunDir, rainStrength) * pow(lm.y, 2.2);
     skyLight += lightCol * 0.05 * saturate(0.6 - 0.4 * N.y) * pow(lm.y, 2.2);
@@ -363,7 +400,7 @@ void main() {
     float reflectionRoughness = materialReflectionRoughness(roughness, clearcoat);
     vec3 F = matteFoliage ? vec3(0.0) : materialReflectionFresnel(NoV, f0raw, albedo, clearcoat, thinFilm);
     float reflWeight = metal ? mix(0.45, 1.0, 1.0 - saturate(reflectionRoughness))
-                             : pow(1.0 - saturate(reflectionRoughness), 2.0);
+                             : pow2(1.0 - saturate(reflectionRoughness));
     bool envReflect = !matteFoliage && reflWeight > 0.002;
     bool ssrReflect = envReflect && (metal || reflectionRoughness < SSR_ROUGH_LIMIT);
     if (envReflect) {
@@ -371,17 +408,24 @@ void main() {
     #if defined WORLD_NETHER || defined WORLD_END
         float skyVis = 1.0;
     #else
-        float skyVis = pow(lm.y, 2.0);
+        float skyVis = pow2(lm.y);
     #endif
         vec3 refl = dimensionSkyReflection(reflDirW, sunDir, fogColor, frameTimeCounter, rainStrength) * skyVis;
         if (ssrReflect) {
         #ifdef SSR_ACCUM_ACTIVE
             reflDirW = ssrLobeDir(reflDirW, lobeN, reflectionRoughness, ssrLobeRandom(noisetex, gl_FragCoord.xy, frameCounter));
-        #endif
-            refl = ssrReflection(viewPos, reflDirW, refl, dither, ssrJitter, viewTexel);
-        #ifdef SSR_ACCUM_ACTIVE
-            refl = ssrAccumulate(refl, scenePos, viewTexel);
+            vec3 histColor;
+            float histEdge;
+            bool hasHist = ssrHistory(scenePos, viewTexel, histColor, histEdge);
+            if (hasHist && histEdge > 0.98 && !ssrTraceThisFrame(gl_FragCoord.xy, frameCounter, reflectionRoughness)) {
+                refl = histColor;
+            } else {
+                refl = ssrReflection(viewPos, reflDirW, refl, dither, ssrJitter, viewTexel, ssrRayQuality(reflectionRoughness));
+                if (hasHist) refl = mix(refl, histColor, SSR_ACCUM_BLEND * histEdge);
+            }
             outSSR = vec4(refl, length(scenePos));
+        #else
+            refl = ssrReflection(viewPos, reflDirW, refl, dither, ssrJitter, viewTexel, ssrRayQuality(reflectionRoughness));
         #endif
         }
         color += refl * F * reflWeight;
@@ -393,16 +437,16 @@ void main() {
     if (puddleCover > 0.001) {
         vec3 Vw = -dirW;
         float NoV = saturate(dot(puddleN, Vw));
-        float fres = 0.02 + 0.98 * pow(1.0 - NoV, 5.0);
+        float fres = 0.02 + 0.98 * pow5(1.0 - NoV);
         vec3 reflDir = reflect(dirW, puddleN);
-        float skyVis = pow(lm.y, 2.0);
+        float skyVis = pow2(lm.y);
 
   #if RAIN_PUDDLE_REFLECTIONS == 0
         vec3 env = skyAmbient(sunDir, rainStrength) * (0.7 + 0.6 * skyVis);
   #else
         vec3 env = dimensionSkyReflection(reflDir, sunDir, fogColor, frameTimeCounter, rainStrength) * skyVis;
     #if RAIN_PUDDLE_REFLECTIONS == 2
-        env = ssrReflection(viewPos, reflDir, env, dither, ssrJitter, viewTexel);
+        env = ssrReflection(viewPos, reflDir, env, dither, ssrJitter, viewTexel, 1.0);
       #ifdef SSR_ACCUM_ACTIVE
         env = ssrAccumulate(env, scenePos, viewTexel);
         outSSR = vec4(env, length(scenePos));
@@ -420,7 +464,7 @@ void main() {
 
 #ifdef LOD_ACTIVE
     if (lodPixel) {
-        vec4 clouds = texture(colortex13, fsrRegionUV(uv, viewTexel));
+        vec4 clouds = texture(colortex13, cloudRegionUV(uv, viewTexel));
         color = color * clouds.a + clouds.rgb;
     }
 #endif

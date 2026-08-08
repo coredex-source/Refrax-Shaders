@@ -12,6 +12,15 @@ vec3 ffFetch(sampler3D s, ivec3 p) {
 }
 
 
+vec4 floodfillResolve(vec4 vox, vec3 sum) {
+    float divisor = 7.0 + (0.90 - LPV_FALLOFF) * 8.0;
+    vec3 result = clamp(sum / divisor, 0.0, 64.0);
+
+    if (vox.a > 0.1) result *= vox.rgb;
+
+    return vec4(result, 0.0);
+}
+
 vec4 floodfillStep(sampler3D prevLight, sampler3D voxels, ivec3 p, ivec3 shift) {
     vec4 vox = texelFetch(voxels, p, 0);
     if (vox.a > 0.5) {
@@ -29,12 +38,47 @@ vec4 floodfillStep(sampler3D prevLight, sampler3D voxels, ivec3 p, ivec3 shift) 
              + ffFetch(prevLight, q + ivec3( 0, 0, 1))
              + ffFetch(prevLight, q + ivec3( 0, 0,-1));
 
-    float divisor = 7.0 + (0.90 - LPV_FALLOFF) * 8.0;
-    vec3 result = clamp(sum / divisor, 0.0, 64.0);
-
-    if (vox.a > 0.1) result *= vox.rgb;
-
-    return vec4(result, 0.0);
+    return floodfillResolve(vox, sum);
 }
+
+#ifdef FF_TILED
+#define FF_TILE_W 10
+#define FF_TILE_N (FF_TILE_W * FF_TILE_W * FF_TILE_W)
+#define FF_GROUP_N 512u
+
+shared vec3 ffTile[FF_TILE_N];
+
+vec3 ffTileAt(ivec3 c) { return ffTile[c.x + c.y * FF_TILE_W + c.z * (FF_TILE_W * FF_TILE_W)]; }
+
+vec4 floodfillStepTiled(sampler3D prevLight, sampler3D voxels, ivec3 p, ivec3 shift) {
+    vec4 vox = texelFetch(voxels, p, 0);
+
+    ivec3 base = ivec3(gl_WorkGroupID) * 8 + shift - 1;
+    for (uint i = gl_LocalInvocationIndex; i < uint(FF_TILE_N); i += FF_GROUP_N) {
+        ivec3 s = ivec3(int(i) % FF_TILE_W,
+                        (int(i) / FF_TILE_W) % FF_TILE_W,
+                        int(i) / (FF_TILE_W * FF_TILE_W));
+        ffTile[i] = ffFetch(prevLight, base + s);
+    }
+    barrier();
+
+    if (vox.a > 0.5) {
+        if (any(greaterThan(vox.rgb, vec3(0.0)))) return vec4(vox.rgb, 0.0);
+
+        return vec4(0.0, 0.0, 0.0, 1.0);
+    }
+
+    ivec3 c = ivec3(gl_LocalInvocationID) + 1;
+    vec3 sum = ffTileAt(c)
+             + ffTileAt(c + ivec3( 1, 0, 0))
+             + ffTileAt(c + ivec3(-1, 0, 0))
+             + ffTileAt(c + ivec3( 0, 1, 0))
+             + ffTileAt(c + ivec3( 0,-1, 0))
+             + ffTileAt(c + ivec3( 0, 0, 1))
+             + ffTileAt(c + ivec3( 0, 0,-1));
+
+    return floodfillResolve(vox, sum);
+}
+#endif
 
 #endif

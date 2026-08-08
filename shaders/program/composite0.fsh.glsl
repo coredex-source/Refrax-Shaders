@@ -7,7 +7,14 @@
 #include "/lib/water.glsl"
 #include "/lib/shadows.glsl"
 #include "/lib/dh.glsl"
+#if HIZ_DEBUG > 0
+  #define HIZ_READ
+  #include "/lib/hiz.glsl"
+#endif
 #include "/lib/thunder.glsl"
+#if defined UNDERWATER_MOTES || defined UNDERWATER_BUBBLES
+  #include "/lib/underwater.glsl"
+#endif
 #ifdef LPV_FOG
   #ifdef COLORED_LIGHTING
     #include "/lib/voxel.glsl"
@@ -17,13 +24,13 @@
 /* ---- Buffer formats ----
 const int colortex0Format = RGBA16F;
 const int colortex1Format = RGBA8;
-const int colortex2Format = RGBA16F;
+const int colortex2Format = RGB10_A2;
 const int colortex3Format = RGBA8;
-const int colortex4Format = RGBA16F;
+const int colortex4Format = R11F_G11F_B10F;
 const int colortex5Format = RGBA16F;
 const int colortex6Format = R8;
 const int colortex8Format = RGBA16F;
-const int colortex9Format = RGBA16F;
+const int colortex9Format = RGB10_A2;
 const int colortex10Format = RGBA8;
 const int colortex11Format = R8;
 const int colortex12Format = RGBA16F;
@@ -72,6 +79,32 @@ uniform vec4 lightningBoltPosition;
 
 in vec2 uv;
 
+#ifdef REFRAX_MEDIA_ACTIVE
+uniform sampler2D refraxMediaTex;
+
+vec3 mediaScatter(vec2 sceneUV, float centreZ) {
+    vec2 res = ceil(vec2(viewWidth, viewHeight) * 0.5);
+    vec2 mp = sceneUV * res - 0.5;
+    vec2 base = floor(mp);
+    vec2 f = mp - base;
+
+    vec3 acc = vec3(0.0);
+    float wsum = 0.0;
+    for (int i = 0; i < 4; i++) {
+        vec2 o = vec2(float(i & 1), float(i >> 1));
+        ivec2 t = clamp(ivec2(base + o), ivec2(0), ivec2(res) - 1);
+        vec2 tUV = (vec2(t) + 0.5) / res;
+        float z = screenToView(vec3(tUV, texture(depthtex0, tUV).r), gbufferProjectionInverse).z;
+        float w = mix(1.0 - f.x, f.x, o.x) * mix(1.0 - f.y, f.y, o.y)
+                * exp2(-abs(z - centreZ) * 0.5) + 1e-5;
+        acc += texelFetch(refraxMediaTex, t, 0).rgb * w;
+        wsum += w;
+    }
+    return acc / wsum;
+}
+#endif
+
+
 /* RENDERTARGETS: 0 */
 layout(location = 0) out vec4 outColor;
 
@@ -94,10 +127,10 @@ void main() {
 #endif
 
     vec4 waterData = texture(colortex2, suv);
-    bool waterMask = waterData.a > 1.8 && waterData.a < 2.5;
+    bool waterMask = unpackSurfaceWater(waterData);
 #ifdef VOXY
     vec4 voxyWaterData = texture(colortex9, suv);
-    bool voxyWaterMask = voxyWaterData.a > 1.8 && voxyWaterData.a < 2.5;
+    bool voxyWaterMask = unpackSurfaceWater(voxyWaterData);
     if (voxyWaterMask) waterData = voxyWaterData;
     waterMask = waterMask || voxyWaterMask;
 #endif
@@ -107,7 +140,7 @@ void main() {
     lodWater = waterMask && !isWater && depth0 >= 1.0 && texture(lodDepthTex1, suv).r > lodDepth0;
 #endif
     if (isWater || lodWater) {
-        vec3 wn = normalize(waterData.rgb);
+        vec3 wn = unpackSurfaceNormal(waterData);
 #ifdef LOD_ACTIVE
         vec3 frontView = lodWater ? screenToView(vec3(uv, lodDepth0), lodProjectionInverse)
                                   : screenToView(vec3(uv, depth0), gbufferProjectionInverse);
@@ -169,96 +202,8 @@ void main() {
     float fogDist = mix(dist, far, skyMask);
     BiomeAtmos biome = biomeAtmos(refraxBiomeTemp, refraxBiomeHumid, refraxBiomeSwamp, refraxBiomeAlpine);
 
-#ifdef GOD_RAYS
-#ifndef WORLD_NETHER
-    {
-  #ifdef WORLD_END
-        vec3 vlCol = (endLightColor() * 0.30 + endAmbient(vec3(0.0, 1.0, 0.0)) * 4.0)
-                   * (1.0 - skyMask);
-  #else
-        vec3 vlCol = sunColor(sunDir.y) + moonColor(-sunDir.y) * 2.0;
-  #endif
-        if (luminance(vlCol) > 0.002) {
-            int steps = PERF_SCALED_COUNT(VL_STEPS, 3);
-            float maxD = min(fogDist, VL_DISTANCE);
-#if defined CLOUD_SHADOWS && !defined WORLD_END
-            vlCol *= cloudShadow(cameraPosition + dirW * (maxD * 0.5), lightDir, frameTimeCounter, rainStrength);
-#endif
-            float dt = maxD / float(steps);
-            vec3 accum = vec3(0.0);
-#ifdef UNDERWATER_RAYS
-            bool submergedRays = isEyeInWater == 1;
-            float rayTime = frameTimeCounter * WAVE_SPEED;
-#endif
-            for (int i = 0; i < steps; i++) {
-                vec3 p = dirW * (dt * (float(i) + dither));
-                vec4 sclip = shadowProjection * (shadowModelView * vec4(p, 1.0));
-                vec3 sp = distortShadowClip(sclip.xyz / sclip.w) * 0.5 + 0.5;
-                float s = 1.0;
-                if (clamp(sp.xy, 0.0, 1.0) == sp.xy)
-                    s = step(sp.z - 0.0004, texture(shadowtex1, sp.xy).r);
-#ifdef UNDERWATER_RAYS
-                if (submergedRays)
-                    s *= 0.30 + 1.55 * waterDetailField(noisetex,
-                        (cameraPosition + p).xz + lightDir.xz * 5.0, rayTime);
-#endif
-                accum += vec3(s);
-            }
-            float lobe = saturate(dot(dirW, lightDir));
-            float phase = pow(lobe, 5.0) * 0.75 + 0.12;
-            float media = isEyeInWater == 1 ? 0.05 : 0.006 * (1.0 + rainStrength * 2.0) * mix(1.0, biome.haze, 0.6);
-#ifdef UNDERWATER_RAYS
-            if (submergedRays) {
-                phase = pow(lobe, 9.0) * 1.30 + 0.10;
-                media *= 0.30 + 0.70 * (float(eyeBrightnessSmooth.y) / 240.0);
-            }
-#endif
-            color += (accum / float(steps)) * vlCol * phase * media * maxD * VL_STRENGTH * (isEyeInWater == 1 ? WATER_COLOR * 3.0 : vec3(1.0));
-
-#ifdef CLOUD_RAYS_ACTIVE
-            if (isEyeInWater != 1 && lightDir.y > 0.06) {
-                float farD = skyMask > 0.5 ? CLOUD_RAY_DISTANCE : min(dist, CLOUD_RAY_DISTANCE);
-                float seg = farD - maxD;
-                if (seg > 0.5) {
-                    int csteps = PERF_SCALED_COUNT(CLOUD_RAY_STEPS, 4);
-                    vec2 rayWind = cloudWind(frameTimeCounter);
-                    float cdt = seg / float(csteps);
-                    float cacc = 0.0;
-                    for (int i = 0; i < csteps; i++) {
-                        vec3 p = dirW * (maxD + cdt * (float(i) + dither));
-                        cacc += cloudShadowSlice(cameraPosition + p, lightDir, rayWind, rainStrength, CLOUD_RAY_STRENGTH);
-                    }
-                    color += (cacc / float(csteps)) * vlCol * phase * media * min(seg, maxD) * VL_STRENGTH * CLOUD_RAY_GAIN;
-                }
-            }
-#endif
-        }
-    }
-#endif
-#endif
-
-#ifdef LPV_FOG
-  #ifdef COLORED_LIGHTING
-    {
-#ifdef WORLD_NETHER
-        int steps = PERF_SCALED_COUNT(NETHER_VL_STEPS, 6);
-        float maxD = min(fogDist, NETHER_VL_DISTANCE);
-        float media = LPV_FOG_DENSITY * LPV_FOG_STRENGTH * NETHER_FOG_GLOW;
-#else
-        int steps = PERF_SCALED_COUNT(12, 4);
-        float maxD = min(fogDist, LPV_FOG_DISTANCE);
-        float media = LPV_FOG_DENSITY * (1.0 + rainStrength) * LPV_FOG_STRENGTH;
-#endif
-        float dt = maxD / float(steps);
-        vec3 glow = vec3(0.0);
-        for (int i = 0; i < steps; i++) {
-            vec3 p = dirW * (dt * (float(i) + dither));
-            float fade;
-            glow += sampleLPVFog(lpvSampler1, p, cameraPosition, fade) * fade;
-        }
-        color += (glow / float(steps)) * maxD * media;
-    }
-  #endif
+#ifdef REFRAX_MEDIA_ACTIVE
+    color += mediaScatter(uv, viewPos.z);
 #endif
 
     if (isEyeInWater == 1) {
@@ -278,6 +223,21 @@ void main() {
         float localContrast = mix(0.56, 0.86, eyeSky) * (1.0 - fogAmt * 0.18);
         color = color * transmittance * vec3(0.54, 0.68, 1.02) * localContrast + scatter * (fogAmt * 0.40);
         if (skyMask > 0.5) color = mix(color, fogCol * (0.26 + lightBeam * 0.38 + upView * eyeSky * 0.12), 0.46);
+
+#ifdef UNDERWATER_MOTES
+  #ifdef WORLD_END
+        vec3 moteLight = endLightColor();
+  #else
+        vec3 moteLight = sunColor(sunDir.y) + moonColor(-sunDir.y);
+  #endif
+        color += underwaterMotes(shadowtex1, dirW, cameraPosition, min(dist, MOTE_DISTANCE),
+                                 frameTimeCounter, dither, shadowModelView, shadowProjection,
+                                 moteLight, eyeSky) * MOTE_STRENGTH;
+#endif
+#ifdef UNDERWATER_BUBBLES
+        color += underwaterBubbles(dirW, cameraPosition, min(dist, BUBBLE_DISTANCE),
+                                   frameTimeCounter, dither, lightDir, eyeSky) * BUBBLE_STRENGTH;
+#endif
     } else if (skyMask < 0.5) {
 #ifdef LOD_ACTIVE
         float border = 0.0;
@@ -291,7 +251,7 @@ void main() {
 #ifdef ATMOS_AERIAL_ACTIVE
         float lightVis = 1.0;
   #ifdef CLOUD_SHADOWS
-        lightVis = cloudShadow(cameraPosition + dirW * (fogDist * 0.5), lightDir,
+        lightVis = cloudShadow(cameraPosition + dirW * (fogDist * 0.5), cameraPosition, lightDir,
                                frameTimeCounter, rainStrength);
   #endif
         AerialResult ap = aerialPerspective(dirW, fogDist, cameraPosition.y + scenePos.y * 0.5, sunDir, lightDir, sunColor(sunDir.y) + moonColor(-sunDir.y), rainStrength, snowFall, lightVis, maxOpacity, biome);
@@ -330,4 +290,13 @@ void main() {
         color *= exp(-dist * blindness * 0.3);
 
     outColor = vec4(color, c0.a);
+#if HIZ_DEBUG > 0
+    {
+        ivec2 full = ivec2(viewWidth, viewHeight);
+        vec2 mm = hizFetchUV(full, HIZ_DEBUG, uv);
+        float near = 1.0 - pow(mm.x, 64.0);
+        float thick = clamp((mm.y - mm.x) * 400.0, 0.0, 1.0);
+        outColor = vec4(near, thick, mm.y >= 1.0 ? 1.0 : 0.0, 1.0);
+    }
+#endif
 }

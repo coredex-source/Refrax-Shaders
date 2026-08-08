@@ -1,2 +1,2 @@
 #version 430
-#include "/program/atmos_multiscatter.csh.glsl"
+#include "/program/atmos_skycache.csh.glsl"

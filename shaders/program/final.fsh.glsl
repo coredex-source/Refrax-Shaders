@@ -90,11 +90,9 @@ float ataaDepthEdge(vec2 uv, vec2 px) {
 void main() {
     vec2 px = 1.0 / vec2(viewWidth, viewHeight);
     vec3 color = gradedAt(uv);
-    float materialA = texture(colortex2, uv).a;
-    bool waterPixel = materialA > 1.8 && materialA < 2.5;
+    bool waterPixel = unpackSurfaceWater(texture(colortex2, uv));
 #ifdef VOXY
-    float voxyMaterialA = texture(colortex9, uv).a;
-    waterPixel = waterPixel || (voxyMaterialA > 1.8 && voxyMaterialA < 2.5);
+    waterPixel = waterPixel || unpackSurfaceWater(texture(colortex9, uv));
 #endif
 
 #if defined FXAA || defined TEMPORAL_AA || SHARPEN_MODE > 0

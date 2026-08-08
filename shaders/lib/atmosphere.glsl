@@ -118,8 +118,15 @@ vec3 skyGradient(vec3 dir, vec3 sunDir, float rain) {
 }
 
 
+#if defined ATMOS_LUT_ACTIVE && !defined REFRAX_SKY_CACHE_GEN
+#define SKY_AMBIENT_CACHED
+uniform sampler2D refraxSkyCacheTex;
+#endif
+
 vec3 skyAmbient(vec3 sunDir, float rain) {
-#ifdef ATMOS_LUT_ACTIVE
+#ifdef SKY_AMBIENT_CACHED
+    return texelFetch(refraxSkyCacheTex, ivec2(0), 0).rgb;
+#elif defined ATMOS_LUT_ACTIVE
     const float RING_Y = 0.574;
     const float RING_H = 0.819;
     vec3 up = vec3(0.0, 1.0, 0.0);

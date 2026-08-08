@@ -87,6 +87,8 @@ vec3 sampleLPV(sampler3D lpv, vec3 scenePos, vec3 camPos, vec3 normal, out float
     if (fade <= 0.0) return vec3(0.0);
 
 #ifdef LPV_OCCLUSION_AWARE
+    vec4 t = texture(lpv, uvw);
+    if (t.a <= 0.0) return lpvShade(max(t.rgb, vec3(0.0)));
     return lpvShade(sampleLPVConnected(lpv, vc));
 #else
     return lpvShade(texture(lpv, uvw).rgb);

@@ -6,6 +6,11 @@ const float PI = 3.14159265359;
 #define saturate(x) clamp(x, 0.0, 1.0)
 #define HAND_DEPTH_LIMIT 0.56
 
+float pow2(float x) { return x * x; }
+float pow3(float x) { return x * x * x; }
+float pow4(float x) { float y = x * x; return y * y; }
+float pow5(float x) { float y = x * x; return y * y * x; }
+
 float luminance(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
 vec3 srgbToLinear(vec3 c) { return pow(c, vec3(2.2)); }
 vec3 linearToSrgb(vec3 c) { return pow(max(c, 0.0), vec3(1.0 / 2.2)); }
@@ -42,6 +47,43 @@ float surfaceDynamic(float surfaceTag) {
     return surfaceTag < 0.0 ? 1.0 : 0.0;
 }
 
+#define SURF_STATIC 0.0
+#define SURF_DYNAMIC 1.0
+#define SURF_WATER 2.0
+#define SURF_PORTAL 3.0
+
+#ifdef GBUFFER_PACK
+vec2 octEncode(vec3 n) {
+    n /= abs(n.x) + abs(n.y) + abs(n.z);
+    vec2 e = n.z >= 0.0 ? n.xy
+           : (1.0 - abs(n.yx)) * vec2(n.x >= 0.0 ? 1.0 : -1.0, n.y >= 0.0 ? 1.0 : -1.0);
+    return (e * 511.0 + 511.0) * (1.0 / 1023.0);
+}
+vec3 octDecode(vec2 f) {
+    vec2 e = (f * 1023.0 - 511.0) * (1.0 / 511.0);
+    float z = 1.0 - abs(e.x) - abs(e.y);
+    e += vec2(e.x >= 0.0 ? -1.0 : 1.0, e.y >= 0.0 ? -1.0 : 1.0) * max(-z, 0.0);
+    return normalize(vec3(e, z));
+}
+vec4 packSurfaceData(vec3 n, float emission, float state) {
+    return vec4(octEncode(normalize(n)), saturate(emission), state * (1.0 / 3.0));
+}
+vec3 unpackSurfaceNormal(vec4 c) { return octDecode(c.xy); }
+float unpackSurfaceEmission(vec4 c) { return c.z; }
+float unpackSurfaceDynamic(vec4 c) { return float(c.w > 0.1667 && c.w < 0.5); }
+bool unpackSurfaceWater(vec4 c) { return c.w > 0.5 && c.w < 0.8333; }
+bool unpackSurfacePortal(vec4 c) { return c.w > 0.8333; }
+#else
+vec4 packSurfaceData(vec3 n, float emission, float state) {
+    return vec4(normalize(n), state > 1.5 ? state : packSurface(emission, state));
+}
+vec3 unpackSurfaceNormal(vec4 c) { return normalize(c.xyz); }
+float unpackSurfaceEmission(vec4 c) { return surfaceEmission(c.w); }
+float unpackSurfaceDynamic(vec4 c) { return surfaceDynamic(c.w); }
+bool unpackSurfaceWater(vec4 c) { return c.w > 1.8 && c.w < 2.5; }
+bool unpackSurfacePortal(vec4 c) { return c.w > 2.5; }
+#endif
+
 vec3 reprojectScene(vec3 scenePos, mat4 prevMV, mat4 prevProj, vec3 camPos, vec3 prevCamPos) {
     vec3 prevScene = scenePos + camPos - prevCamPos;
     vec4 clip = prevProj * (prevMV * vec4(prevScene, 1.0));
@@ -56,6 +98,14 @@ vec3 reprojectScene(vec3 scenePos, mat4 prevMV, mat4 prevProj, vec3 camPos, vec3
 #endif
 vec2 fsrRegionUV(vec2 sceneUV, vec2 texel) {
     return clamp(sceneUV * FSR_SCALE, vec2(0.0), vec2(FSR_SCALE) - 0.5 * texel);
+}
+
+vec2 cloudRegionUV(vec2 sceneUV, vec2 texel) {
+    return clamp(sceneUV * CLOUD_REGION_SCALE, vec2(0.0), vec2(CLOUD_REGION_SCALE) - texel);
+}
+
+vec2 aoRegionUV(vec2 sceneUV, vec2 texel) {
+    return clamp(sceneUV * AO_REGION_SCALE, vec2(0.0), vec2(AO_REGION_SCALE) - texel);
 }
 
 vec2 historyUV(vec2 sceneUV, vec2 texel) {
@@ -110,7 +160,7 @@ vec3 discLightSpecular(vec3 N, vec3 V, vec3 L, float sinRadius, float roughness,
     return min(D * G * NoL, 32.0) * F;
 }
 vec3 fresnelSchlick(float cosT, vec3 f0) {
-    return f0 + (1.0 - f0) * pow(1.0 - saturate(cosT), 5.0);
+    return f0 + (1.0 - f0) * pow5(1.0 - saturate(cosT));
 }
 
 vec3 waterDiscLightSpecular(vec3 N, vec3 V, vec3 L, float sinRadius, float roughness, vec3 f0) {

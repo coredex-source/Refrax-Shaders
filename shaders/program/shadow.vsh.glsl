@@ -51,7 +51,7 @@ void main() {
                 vec3 c = blockLightColor(id);
                 imageStore(voxelImg, idx, vec4(c * c * LPV_SEED, 1.0));
             } else if (isTintedGlass(id)) {
-                imageStore(voxelImg, idx, vec4(glassTint(id), 0.25));
+                imageStore(voxelImg, idx, vec4(lpvGlassTransmit(id), 0.25));
             } else if (!isNoOcclude(id)) {
                 imageStore(voxelImg, idx, vec4(0.0, 0.0, 0.0, 1.0));
             }

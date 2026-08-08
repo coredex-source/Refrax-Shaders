@@ -10,7 +10,8 @@ uniform float viewWidth, viewHeight;
 /* RENDERTARGETS: 4 */
 layout(location = 0) out vec4 outTile;
 
-const float gaussW[5] = float[](0.2042, 0.1802, 0.1238, 0.0663, 0.0276);
+const float tapWeight[3] = float[](0.2042, 0.3040, 0.0939);
+const float tapOffset[3] = float[](0.0, 1.4072368, 3.2939297);
 
 void main() {
     ivec2 texel = ivec2(gl_FragCoord.xy);
@@ -28,14 +29,20 @@ void main() {
         return;
     }
 
-    vec3 acc = vec3(0.0);
-    for (int i = -4; i <= 4; i++) {
+    vec3 acc = texelFetch(colortex4, texel, 0).rgb * tapWeight[0];
+    vec2 center = vec2(texel) + 0.5;
+    for (int i = 1; i < 3; i++) {
 #ifdef BLOOM_BLUR_VERTICAL
-        ivec2 pos = ivec2(texel.x, clamp(texel.y + i, lo.y, hi.y));
+        float far = clamp(center.y + tapOffset[i], float(lo.y) + 0.5, float(hi.y) + 0.5);
+        float near = clamp(center.y - tapOffset[i], float(lo.y) + 0.5, float(hi.y) + 0.5);
+        acc += (texture(colortex4, vec2(center.x, far) / viewSize).rgb
+              + texture(colortex4, vec2(center.x, near) / viewSize).rgb) * tapWeight[i];
 #else
-        ivec2 pos = ivec2(clamp(texel.x + i, lo.x, hi.x), texel.y);
+        float far = clamp(center.x + tapOffset[i], float(lo.x) + 0.5, float(hi.x) + 0.5);
+        float near = clamp(center.x - tapOffset[i], float(lo.x) + 0.5, float(hi.x) + 0.5);
+        acc += (texture(colortex4, vec2(far, center.y) / viewSize).rgb
+              + texture(colortex4, vec2(near, center.y) / viewSize).rgb) * tapWeight[i];
 #endif
-        acc += texelFetch(colortex4, pos, 0).rgb * gaussW[abs(i)];
     }
     outTile = vec4(acc, 1.0);
 }

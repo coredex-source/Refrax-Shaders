@@ -85,12 +85,12 @@ void main() {
     vec3 shadow = getShadow(scenePos, N, NoL, dither, shadowModelView, shadowProjection, shadowtex0, shadowtex1, shadowcolor0);
 #ifdef CLOUD_SHADOWS
     if (NoL > 0.0 && shadow.g > 0.001)
-        shadow *= cloudShadow(scenePos + cameraPosition, lightDir, frameTimeCounter, rainStrength);
+        shadow *= cloudShadow(scenePos + cameraPosition, cameraPosition, lightDir, frameTimeCounter, rainStrength);
 #endif
     vec3 skyLight = skyAmbientDirectional(N, sunDir, rainStrength) * pow(lmcoord.y, 2.2);
     skyLight += lightCol * 0.05 * saturate(0.6 - 0.4 * N.y) * pow(lmcoord.y, 2.2);
 #endif
-    vec3 blockLight = FALLBACK_BLOCKLIGHT * pow(lmcoord.x, 3.0) * 1.85;
+    vec3 blockLight = FALLBACK_BLOCKLIGHT * pow3(lmcoord.x) * 1.85;
 #ifdef WORLD_NETHER
     blockLight *= NETHER_FALLBACK_SCALE * facing;
 #endif
@@ -136,13 +136,13 @@ void main() {
             alpha = max(alpha, foam * 0.92);
         }
 #endif
-        outWaterData = vec4(N, 2.0);
+        outWaterData = packSurfaceData(N, 0.0, SURF_WATER);
     } else {
         vec3 albedo = srgbToLinear(vcolor.rgb);
         lit = albedo * (lightCol * NoL * shadow + skyLight + blockLight + minAmb);
         lit += refl * fres * 0.8 + sunSpec * 0.5;
         alpha = max(vcolor.a, fres * 0.5);
-        outWaterData = vec4(N, 0.0);
+        outWaterData = packSurfaceData(N, 0.0, SURF_STATIC);
     }
 
     outColor = vec4(lit, alpha);

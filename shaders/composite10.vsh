@@ -1,3 +1,2 @@
 #version 400 compatibility
-out vec2 uv;
-void main() { gl_Position = ftransform(); uv = gl_MultiTexCoord0.xy; }
+#include "/program/bloom_blur.vsh.glsl"

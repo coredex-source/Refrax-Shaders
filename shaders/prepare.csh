@@ -1,2 +1,2 @@
 #version 430
-#include "/program/atmos_transmittance.csh.glsl"
+#include "/program/atmos_skyview.csh.glsl"

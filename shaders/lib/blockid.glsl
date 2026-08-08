@@ -139,10 +139,42 @@ vec3 glassTint(int id) {
     return vec3(0.16, 0.16, 0.16);
 }
 
+vec3 lpvGlassTransmit(int id) {
+    vec3 t = glassTint(id);
+    return max(mix(vec3(1.0), t * t, LPV_GLASS_TINT), vec3(0.0));
+}
+
 bool isNoOcclude(int id) {
     return (id >= 10050 && id <= 10059) || id == 10060 || id == 10061 || isTintedGlass(id) || id == 10091;
 }
 bool isFoliage(int id) { return id >= 10050 && id <= 10059; }
+
+bool isEmissiveOre(int id) { return id >= 10031 && id <= 10039; }
+
+float chromaMask(vec3 albedo, float satLo, float satHi, float briLo, float briHi) {
+    float hi = max(albedo.r, max(albedo.g, albedo.b));
+    float lo = min(albedo.r, min(albedo.g, albedo.b));
+    float sat = (hi - lo) / max(hi, 1e-4);
+    return saturate(smoothstep(satLo, satHi, sat) * smoothstep(briLo, briHi, hi));
+}
+
+float oreEmission(vec3 albedo) {
+    float hi = max(albedo.r, max(albedo.g, albedo.b));
+    float chroma = chromaMask(albedo, 0.20, 0.55, 0.18, 0.50);
+    float metal = smoothstep(0.62, 0.92, hi);
+    return saturate(max(chroma, metal)) * EMISSIVE_ORE_STRENGTH;
+}
+
+bool isEmissiveFoliage(int id) { return id == 10050 || id == 10052 || id == 10053; }
+
+float foliageEmission(vec3 albedo) {
+    float hi = max(albedo.r, max(albedo.g, albedo.b));
+    float green = albedo.g - max(albedo.r, albedo.b);
+    float notGreen = 1.0 - smoothstep(-0.02, 0.06, green);
+    float colored = chromaMask(albedo, 0.35, 0.70, 0.35, 0.70);
+    float pale = smoothstep(0.78, 0.94, hi);
+    return saturate(max(colored, pale)) * notGreen * EMISSIVE_FOLIAGE_STRENGTH;
+}
 bool isWavingShort(int id) { return id == 10050; }
 bool isWavingLeaf(int id) { return id == 10051; }
 bool isWavingTallLower(int id) { return id == 10052; }

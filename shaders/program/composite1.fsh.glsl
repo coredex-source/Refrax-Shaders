@@ -31,10 +31,10 @@ vec3 taaUntonemap(vec3 c) { return c / max(1.0 - max3(c), 1e-4); }
 
 #ifdef DYNAMIC_TAA
 float dynamicMask(sampler2D tex, ivec2 texel, ivec2 tmax) {
-    float m = surfaceDynamic(texelFetch(tex, texel, 0).a);
+    float m = unpackSurfaceDynamic(texelFetch(tex, texel, 0));
     for (int i = 0; i < 4; i++) {
         ivec2 o = ivec2(i == 0 ? -2 : (i == 1 ? 2 : 0), i == 2 ? -2 : (i == 3 ? 2 : 0));
-        m = max(m, surfaceDynamic(texelFetch(tex, clamp(texel + o, ivec2(0), tmax), 0).a));
+        m = max(m, unpackSurfaceDynamic(texelFetch(tex, clamp(texel + o, ivec2(0), tmax), 0)));
     }
     return m;
 }
@@ -65,9 +65,9 @@ void main() {
     vec2 inSize = floor(viewSize * UPSCALE_SCALE);
     vec2 regionMax = inSize - 0.5;
 
-    float materialA = texture(colortex2, uv).a;
-    float reflectable = materialA > 2.5 ? 0.0 : 1.0;
-    float waterReactive = float(materialA > 1.8 && materialA < 2.5);
+    vec4 material = texture(colortex2, uv);
+    float reflectable = unpackSurfacePortal(material) ? 0.0 : 1.0;
+    float waterReactive = float(unpackSurfaceWater(material));
 
     vec2 posPx = uv * inSize + taauOffset(frameCounter);
     vec2 posUV = clamp(posPx, vec2(0.5), regionMax) * px;
@@ -82,14 +82,14 @@ void main() {
 
     ivec2 t0 = ivec2(gl_FragCoord.xy);
     ivec2 tmax = ivec2(viewSize) - 1;
-    float emissiveReactive = saturate(surfaceEmission(materialA));
-    float portalReactive = step(2.01, materialA);
+    float emissiveReactive = saturate(unpackSurfaceEmission(material));
+    float portalReactive = float(unpackSurfacePortal(material));
     for (int i = 0; i < 4; i++) {
         ivec2 o = ivec2(i == 0 ? -1 : (i == 1 ? 1 : 0),
                          i == 2 ? -1 : (i == 3 ? 1 : 0));
-        float a = texelFetch(colortex2, clamp(t0 + o, ivec2(0), tmax), 0).a;
-        emissiveReactive = max(emissiveReactive, saturate(surfaceEmission(a)));
-        portalReactive = max(portalReactive, step(2.01, a));
+        vec4 n = texelFetch(colortex2, clamp(t0 + o, ivec2(0), tmax), 0);
+        emissiveReactive = max(emissiveReactive, saturate(unpackSurfaceEmission(n)));
+        portalReactive = max(portalReactive, float(unpackSurfacePortal(n)));
     }
     float centerDepth = texelFetch(depthtex0, t0, 0).r;
     vec3 closest = vec3(gl_FragCoord.xy, centerDepth);
@@ -244,9 +244,9 @@ void main() {
     vec3 current = c0.rgb;
     if (any(isnan(current))) current = vec3(0.0);
     current = max(current, vec3(0.0));
-    float materialA = texture(colortex2, uv).a;
-    float reflectable = materialA > 2.5 ? 0.0 : 1.0;
-    float waterReactive = float(materialA > 1.8 && materialA < 2.5);
+    vec4 material = texture(colortex2, uv);
+    float reflectable = unpackSurfacePortal(material) ? 0.0 : 1.0;
+    float waterReactive = float(unpackSurfaceWater(material));
 #ifndef TEMPORAL_AA
   #ifdef FSR
     outColor = vec4(min(taaTonemap(current), vec3(0.98)), 1.0);

@@ -68,7 +68,7 @@ vec3 materialF0(float f0, vec3 albedo) {
 
 vec3 fresnelLazanyi(float cosTheta, vec3 f0, vec3 f82) {
     float c = saturate(cosTheta);
-    float m = pow(1.0 - c, 5.0);
+    float m = pow5(1.0 - c);
     vec3 a = 17.6513846 * (f0 - f82) + 8.16666667 * (1.0 - f0);
     return saturate(f0 + (1.0 - f0) * m - a * c * (m - m * c));
 }
@@ -294,6 +294,32 @@ vec2 wrapTile(vec2 uv, vec2 base, vec2 size) {
 
 const float POM_MAX_RAY = 1.5;
 
+float pomFootprint(sampler2D normalsTex, vec2 dx, vec2 dy, out vec2 atlasPixels) {
+    atlasPixels = vec2(textureSize(normalsTex, 0));
+    return max(max(length(dx * atlasPixels), length(dy * atlasPixels)), 1.0);
+}
+
+float pomPixelSpan(sampler2D normalsTex, vec2 size, vec3 viewDirTangent, vec2 dx, vec2 dy, float distanceFade) {
+    float viewZ = viewDirTangent.z;
+    if (viewZ <= 0.02 || distanceFade >= 0.999) return 0.0;
+    vec2 fullRay = -viewDirTangent.xy / viewZ * (POM_DEPTH * (1.0 - distanceFade));
+    float fullLength = length(fullRay);
+    float depthRange = fullLength > POM_MAX_RAY ? POM_MAX_RAY / fullLength : 1.0;
+    vec2 atlasPixels;
+    float footprint = pomFootprint(normalsTex, dx, dy, atlasPixels);
+    return length(fullRay * depthRange * size * atlasPixels) / footprint;
+}
+
+float pomSpanKeep(float pixelSpan) {
+    return POM_SUBPIXEL_SKIP <= 0.0 ? 1.0
+         : smoothstep(POM_SUBPIXEL_SKIP * 0.5, POM_SUBPIXEL_SKIP, pixelSpan);
+}
+
+int pomLayerCount(float pixelSpan) {
+    const int maxLayers = POM_SAMPLES * 3;
+    return clamp(int(ceil(pixelSpan * 3.0)), min(POM_MIN_LAYERS, maxLayers), maxLayers);
+}
+
 vec2 pomOffset(sampler2D normalsTex, vec2 uv, vec2 base, vec2 size,
                vec3 viewDirTangent, vec2 dx, vec2 dy, float distanceFade,
                out float surfaceHeight, out vec3 slopeNormalT, out float slopeWeight) {
@@ -315,11 +341,18 @@ vec2 pomOffset(sampler2D normalsTex, vec2 uv, vec2 base, vec2 size,
     float depthRange = fullLength > POM_MAX_RAY ? POM_MAX_RAY / fullLength : 1.0;
     vec2 rayOffset = fullRay * depthRange;
 
-    vec2 atlasPixels = vec2(textureSize(normalsTex, 0));
-    float footprint = max(max(length(dx * atlasPixels), length(dy * atlasPixels)), 1.0);
-    float rayTexels = length(rayOffset * size * atlasPixels);
+    vec2 atlasPixels;
+    float footprint = pomFootprint(normalsTex, dx, dy, atlasPixels);
+    float pixelSpan = length(rayOffset * size * atlasPixels) / footprint;
+
+    float keep = pomSpanKeep(pixelSpan);
+    if (keep <= 0.0) return uv;
+    rayOffset *= keep;
+    depthRange *= keep;
+    pixelSpan *= keep;
+
     const int maxLayers = POM_SAMPLES * 3;
-    int layerCount = clamp(int(ceil(rayTexels * 3.0 / footprint)), POM_SAMPLES, maxLayers);
+    int layerCount = pomLayerCount(pixelSpan);
     float layerStep = depthRange / float(layerCount);
     vec2 uvStep = rayOffset / float(layerCount);
     vec2 localUV = (uv - base) / size;
@@ -356,7 +389,7 @@ vec2 pomOffset(sampler2D normalsTex, vec2 uv, vec2 base, vec2 size,
         return base + fract(currentUV) * size;
     }
 
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < POM_REFINE_STEPS; i++) {
         vec2 midUV = (previousUV + currentUV) * 0.5;
         float midRayDepth = (previousRayDepth + currentRayDepth) * 0.5;
         float midHeight = textureGrad(normalsTex, wrapTile(base + midUV * size, base, size), dx, dy).a;
@@ -398,6 +431,11 @@ float pomDirectShadow(sampler2D normalsTex, vec2 uv, vec2 base, vec2 size,
     float lightZ = lightDirTangent.z;
     if (lightZ <= 0.0 || surfaceHeight >= 0.995 || distanceFade >= 0.999) return 1.0;
     vec2 lateral = lightDirTangent.xy * (POM_DEPTH * 4.0);
+    if (POM_SUBPIXEL_SKIP > 0.0) {
+        vec2 atlasPixels;
+        float footprint = pomFootprint(normalsTex, dx, dy, atlasPixels);
+        if (length(lateral * 0.1 * size * atlasPixels) / footprint < POM_SUBPIXEL_SKIP) return 1.0;
+    }
     vec2 localUV = (uv - base) / size;
     float shadow = 1.0;
     for (int i = 0; i < POM_SHADOW_SAMPLES; i++) {
@@ -428,7 +466,7 @@ vec3 thinFilmFresnel(float cosTheta, vec3 baseF, float strength) {
     float opticalPath = 2.0 * 1.46 * thickness * sqrt(max(1.0 - (1.0 - c * c) / (1.46 * 1.46), 0.0));
     vec3 phase = 2.0 * PI * opticalPath / vec3(650.0, 510.0, 475.0);
     vec3 fringe = 0.5 + 0.5 * cos(phase);
-    float visibility = strength * mix(0.35, 1.0, pow(1.0 - c, 2.0));
+    float visibility = strength * mix(0.35, 1.0, pow2(1.0 - c));
     return saturate(baseF + (fringe - 0.5) * (1.0 - baseF) * (0.32 * visibility));
 #endif
 }

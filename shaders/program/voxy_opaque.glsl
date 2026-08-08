@@ -63,6 +63,6 @@ void voxy_emitFragment(VoxyFragmentParameters p) {
         emission = inferredEmission(albedo, lm.x);
 
     outAlbedo = vec4(saturate(albedo), 1.0);
-    outNormal = vec4(N, emission);
+    outNormal = packSurfaceData(N, emission, SURF_STATIC);
     outMaterial = vec4(lm, mat.roughness, mat.f0);
 }

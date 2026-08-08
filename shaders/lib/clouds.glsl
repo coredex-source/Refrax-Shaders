@@ -10,6 +10,12 @@
 uniform int worldTime;
 uniform int worldDay;
 
+#if defined CLOUD_SHADOWS && CLOUD_MODE > 0 && !defined REFRAX_CLOUD_SHADOW_GEN
+  #if !defined WORLD_NETHER && !defined WORLD_END
+    #define REFRAX_CLOUD_SHADOW_MAP
+  #endif
+#endif
+
 #define CU_BOTTOM CLOUD_ALTITUDE
 #define CU_TOP (CLOUD_ALTITUDE + CLOUD_THICKNESS)
 #define AC_BOTTOM (CU_TOP + CLOUD_LAYER_GAP)
@@ -69,14 +75,14 @@ float cloudCoverage(vec2 xz, vec2 wind, float rain, float bias) {
     vec2 p = (xz + wind) * (CLOUD_SCALE * CLOUD_COVERAGE_SCALE);
     float large = fbm2(p, 3);
     return saturate(CLOUD_COVERAGE * 1.15 - 0.10 + (large - 0.5) * CLOUD_COVERAGE_CONTRAST
-                  + rain * 0.30 + bias + cloudDailyBias());
+                  + rain * 0.30 + bias);
 }
 
-float cumulusDensity(vec3 wp, vec2 wind, float rain, int lod) {
+float cumulusDensity(vec3 wp, vec2 wind, float rain, float bias, int lod) {
     float h = (wp.y - CU_BOTTOM) / CLOUD_THICKNESS;
     if (h < 0.0 || h > 1.0) return 0.0;
 
-    float cov = cloudCoverage(wp.xz, wind, rain, 0.0);
+    float cov = cloudCoverage(wp.xz, wind, rain, bias);
     if (cov <= 0.002) return 0.0;
 
     float shear = pow(h, 1.5) * CLOUD_SHEAR * CLOUD_THICKNESS;
@@ -84,36 +90,36 @@ float cumulusDensity(vec3 wp, vec2 wind, float rain, int lod) {
                    wp.y * CLOUD_VERTICAL_SCALE,
                    wp.z + wind.y + shear * 0.5) * CLOUD_SCALE;
 
-    float base = fbm3(sp, lod == 0 ? 4 : 3);
+    float base = fbm3Cloud(sp, lod == 0 ? 4 : 3);
     float prof = smoothstep(0.0, 0.18, h) * smoothstep(0.0, 0.55, 1.0 - h);
     float d = saturate((base - (1.0 - cov)) * 2.6) * prof;
     if (d <= 0.0) return 0.0;
 
     if (lod == 0) {
-        float det = fbm3(sp * CLOUD_DETAIL_FREQ + vec3(31.7, 13.1, 7.9), 3);
+        float det = fbm3Cloud(sp * CLOUD_DETAIL_FREQ + vec3(31.7, 13.1, 7.9), 3);
         d = max(d - det * det * CLOUD_DETAIL_STRENGTH * (1.0 - 0.5 * h), 0.0);
     }
     return d;
 }
 
 #ifdef CLOUD_ALTOCUMULUS
-float altocumulusDensity(vec3 wp, vec2 wind, float rain, int lod) {
+float altocumulusDensity(vec3 wp, vec2 wind, float rain, float bias, int lod) {
     float h = (wp.y - AC_BOTTOM) / CLOUD_AC_THICKNESS;
     if (h < 0.0 || h > 1.0) return 0.0;
 
-    float cov = cloudCoverage(wp.zx * 1.7 + 431.0, wind * 1.6, rain, CLOUD_ALTOCUMULUS_AMOUNT - 0.85);
+    float cov = cloudCoverage(wp.zx * 1.7 + 431.0, wind * 1.6, rain, CLOUD_ALTOCUMULUS_AMOUNT - 0.85 + bias);
     if (cov <= 0.002) return 0.0;
 
     vec3 sp = vec3(wp.x + wind.x * 1.6, wp.y * CLOUD_VERTICAL_SCALE * 1.6, wp.z + wind.y * 1.6)
             * (CLOUD_SCALE * 2.6);
 
-    float base = fbm3(sp + 57.0, lod == 0 ? 4 : 3);
+    float base = fbm3Cloud(sp + 57.0, lod == 0 ? 4 : 3);
     float prof = smoothstep(0.0, 0.22, h) * smoothstep(0.0, 0.45, 1.0 - h);
     float d = saturate((base - (1.0 - cov)) * 2.8) * prof;
     if (d <= 0.0) return 0.0;
 
     if (lod == 0) {
-        float det = fbm3(sp * (CLOUD_DETAIL_FREQ * 1.6) + 11.3, 2);
+        float det = fbm3Cloud(sp * (CLOUD_DETAIL_FREQ * 1.6) + 11.3, 2);
         d = max(d - det * det * CLOUD_DETAIL_STRENGTH * 0.8, 0.0);
     }
     return d * 0.8;
@@ -130,13 +136,13 @@ float cloudPhase(float cosT) {
          + 0.22 * hgPhase(cosT, -0.22);
 }
 
-float cumulusLightDepth(vec3 p, vec3 lightDir, vec2 wind, float rain, int steps) {
+float cumulusLightDepth(vec3 p, vec3 lightDir, vec2 wind, float rain, float bias, int steps) {
     float od = 0.0;
     float travelled = 0.0;
     float len = CLOUD_THICKNESS * 0.09;
     for (int i = 0; i < steps; i++) {
         travelled += len;
-        od += cumulusDensity(p + lightDir * travelled, wind, rain, 1) * len;
+        od += cumulusDensity(p + lightDir * travelled, wind, rain, bias, 1) * len;
         len *= 2.1;
     }
     return od;
@@ -158,7 +164,7 @@ vec3 cloudScatter(float density, float lightOD, float cosT, float heightFrac,
     return sunC * (sun * CLOUD_SUN_GAIN) + ambC * (CLOUD_AMBIENT + 0.50 * heightFrac);
 }
 
-float cloudShadowSlice(vec3 worldPos, vec3 lightDir, vec2 wind, float rain, float strength) {
+float cloudShadowSlice(vec3 worldPos, vec3 lightDir, vec2 wind, float rain, float bias, float strength) {
 #if CLOUD_MODE == 0
     return 1.0;
 #else
@@ -171,34 +177,75 @@ float cloudShadowSlice(vec3 worldPos, vec3 lightDir, vec2 wind, float rain, floa
 
     vec3 p = worldPos + lightDir * min(travel, 8000.0);
     p.y = y;
-    float od = cumulusDensity(p, wind, rain, 1) * CLOUD_THICKNESS * CLOUD_DENSITY;
+    float od = cumulusDensity(p, wind, rain, bias, 1) * CLOUD_THICKNESS * CLOUD_DENSITY;
 
     float fade = smoothstep(0.06, 0.18, ly);
     return mix(1.0, exp(-od), strength * fade);
 #endif
 }
 
-float cloudShadow(vec3 worldPos, vec3 lightDir, float time, float rain) {
+#define CLOUD_SHADOW_RES 512
+#define CLOUD_SHADOW_EXTENT 4096.0
+#define CLOUD_SHADOW_TEXEL (CLOUD_SHADOW_EXTENT / float(CLOUD_SHADOW_RES))
+
+float cloudSlabY(int i) { return CU_BOTTOM + CLOUD_THICKNESS * (float(i) + 0.5) / 3.0; }
+
+vec2 cloudShadowProj(vec3 worldPos, vec3 lightDir) {
+    return worldPos.xz - lightDir.xz * (worldPos.y / max(lightDir.y, 0.06));
+}
+
+vec2 cloudShadowAnchor(vec3 camPos, vec3 lightDir) {
+    return floor(cloudShadowProj(camPos, lightDir) / CLOUD_SHADOW_TEXEL) * CLOUD_SHADOW_TEXEL;
+}
+
+vec2 cloudShadowMapPos(ivec2 texel, vec3 camPos, vec3 lightDir) {
+    return cloudShadowAnchor(camPos, lightDir)
+         + ((vec2(texel) + 0.5) / float(CLOUD_SHADOW_RES) - 0.5) * CLOUD_SHADOW_EXTENT;
+}
+
+vec2 cloudShadowMapUV(vec3 worldPos, vec3 camPos, vec3 lightDir) {
+    vec2 rel = cloudShadowProj(worldPos, lightDir) - cloudShadowAnchor(camPos, lightDir);
+    float edge = 0.5 / float(CLOUD_SHADOW_RES);
+    return clamp(rel / CLOUD_SHADOW_EXTENT + 0.5, vec2(edge), vec2(1.0 - edge));
+}
+
+vec3 cloudShadowSlabs(vec2 q, vec3 lightDir, vec2 wind, float rain, float bias) {
+    float ly = max(lightDir.y, 0.06);
+    vec3 od = vec3(0.0);
+    for (int i = 0; i < 3; i++) {
+        float y = cloudSlabY(i);
+        vec3 p = vec3(q.x + lightDir.x * (y / ly), y, q.y + lightDir.z * (y / ly));
+        od[i] = cumulusDensity(p, wind, rain, bias, 1);
+    }
+    return od;
+}
+
+#ifdef REFRAX_CLOUD_SHADOW_MAP
+uniform sampler2D refraxCloudShadowTex;
+#endif
+
+float cloudShadow(vec3 worldPos, vec3 camPos, vec3 lightDir, float time, float rain) {
 #if CLOUD_MODE == 0
     return 1.0;
 #else
     float ly = lightDir.y;
     if (ly < 0.06) return 1.0;
 
-    vec2 wind = cloudWind(time);
-    float od = 0.0;
+#ifdef REFRAX_CLOUD_SHADOW_MAP
+    vec3 od = texture(refraxCloudShadowTex, cloudShadowMapUV(worldPos, camPos, lightDir)).rgb;
+#else
+    vec3 od = cloudShadowSlabs(cloudShadowProj(worldPos, lightDir), lightDir,
+                               cloudWind(time), rain, cloudDailyBias());
+#endif
+
+    float sum = 0.0;
     for (int i = 0; i < 3; i++) {
-        float y = CU_BOTTOM + CLOUD_THICKNESS * (float(i) + 0.5) / 3.0;
-        float travel = (y - worldPos.y) / ly;
-        if (travel <= 0.0) continue;
-        vec3 p = worldPos + lightDir * min(travel, 8000.0);
-        p.y = y;
-        od += cumulusDensity(p, wind, rain, 1);
+        if (cloudSlabY(i) > worldPos.y) sum += od[i];
     }
-    od *= (CLOUD_THICKNESS / 3.0) * CLOUD_DENSITY;
+    sum *= (CLOUD_THICKNESS / 3.0) * CLOUD_DENSITY;
 
     float fade = smoothstep(0.06, 0.18, ly);
-    return mix(1.0, exp(-od), CLOUD_SHADOW_STRENGTH * fade);
+    return mix(1.0, exp(-sum), CLOUD_SHADOW_STRENGTH * fade);
 #endif
 }
 
@@ -209,6 +256,7 @@ vec4 volumetricClouds(vec3 camWorld, vec3 dir, vec3 sunDir, float time, float ra
     if (dir.y < 0.006) return vec4(0.0, 0.0, 0.0, 1.0);
 
     vec2 wind = cloudWind(time);
+    float bias = cloudDailyBias();
     vec3 lightDir = sunDir.y > -0.04 ? sunDir : -sunDir;
     float cosT = dot(dir, lightDir);
     vec3 sunC = (sunColor(sunDir.y) + moonColor(-sunDir.y) * 2.2) * (1.0 - rain * 0.42);
@@ -235,9 +283,9 @@ vec4 volumetricClouds(vec3 camWorld, vec3 dir, vec3 sunDir, float time, float ra
             for (int i = 0; i < steps; i++) {
                 if (transmittance < 0.02) break;
                 vec3 p = camWorld + dir * t;
-                float d = cumulusDensity(p, wind, rain, 0);
+                float d = cumulusDensity(p, wind, rain, bias, 0);
                 if (d > 0.0) {
-                    float lightOD = cumulusLightDepth(p, lightDir, wind, rain, lightSteps);
+                    float lightOD = cumulusLightDepth(p, lightDir, wind, rain, bias, lightSteps);
                     float h = saturate((p.y - CU_BOTTOM) / CLOUD_THICKNESS);
                     float stepTrans = exp(-d * CLOUD_DENSITY * dt);
                     float fade = saturate(1.0 - t / CLOUD_FADE_DIST);
@@ -266,7 +314,7 @@ vec4 volumetricClouds(vec3 camWorld, vec3 dir, vec3 sunDir, float time, float ra
             for (int i = 0; i < steps; i++) {
                 if (transmittance < 0.02) break;
                 vec3 p = camWorld + dir * t;
-                float d = altocumulusDensity(p, wind, rain, 0);
+                float d = altocumulusDensity(p, wind, rain, bias, 0);
                 if (d > 0.0) {
                     float lightOD = d * CLOUD_AC_THICKNESS * 0.5;
                     float h = saturate((p.y - AC_BOTTOM) / CLOUD_AC_THICKNESS);
@@ -294,7 +342,7 @@ vec4 clouds2D(vec3 camWorld, vec3 dir, vec3 sunDir, float time, float rain, floa
 
     vec2 wind = cloudWind(time);
     vec3 p = camWorld + dir * t;
-    float cov = cloudCoverage(p.xz, wind, rain, 0.0);
+    float cov = cloudCoverage(p.xz, wind, rain, cloudDailyBias());
 
     float shape = fbm2((p.xz + wind) * (CLOUD_SCALE * 1.1), 4);
     float a = saturate((shape - (1.0 - cov)) * 2.6);

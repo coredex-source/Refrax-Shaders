@@ -35,4 +35,28 @@ float fbm3(vec3 p, int octaves) {
     return v;
 }
 
+#ifdef CLOUD_NOISE_TEXTURE
+uniform sampler3D cloudNoiseTex;
+
+float vnoise3Cloud(vec3 p) {
+    vec3 i = floor(p);
+    vec3 f = p - i;
+    f = f * f * (3.0 - 2.0 * f);
+    return texture(cloudNoiseTex, (mod(i, float(CLOUD_NOISE_DIM)) + f + 0.5)
+                                * (1.0 / float(CLOUD_NOISE_DIM + 1))).r;
+}
+#else
+#define vnoise3Cloud vnoise3
+#endif
+
+float fbm3Cloud(vec3 p, int octaves) {
+    float v = 0.0, a = 0.5;
+    for (int i = 0; i < octaves; i++) {
+        v += a * vnoise3Cloud(p);
+        p = p * 2.13 + vec3(11.7, 5.3, 7.1);
+        a *= 0.5;
+    }
+    return v;
+}
+
 #endif

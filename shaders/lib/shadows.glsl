@@ -14,6 +14,43 @@ vec3 distortShadowClip(vec3 clip) {
 }
 
 
+#ifdef CONTACT_SHADOWS_ACTIVE
+float contactShadow(sampler2D depthTex, ivec2 full, vec3 viewPos, vec3 viewNormal, vec3 lightDirView, float NoL, float dither, mat4 proj, mat4 projInv) {
+    float dist = length(viewPos);
+    float fade = 1.0 - smoothstep(CONTACT_SHADOW_DISTANCE * 0.75, CONTACT_SHADOW_DISTANCE, dist);
+    if (fade <= 0.0) return 1.0;
+
+    vec3 origin = viewPos + viewNormal * (0.012 + dist * 0.006) * (2.0 - saturate(NoL));
+    vec3 rayStep = lightDirView * (CONTACT_SHADOW_LENGTH / float(CONTACT_SHADOW_STEPS));
+
+    vec4 clip = proj * vec4(origin + rayStep * (1.0 + dither), 1.0);
+    vec4 clipStep = proj * vec4(rayStep, 0.0);
+    vec4 clipEnd = clip + clipStep * float(CONTACT_SHADOW_STEPS - 1);
+    if (clip.w <= 1e-4 || clipEnd.w <= 1e-4) return 1.0;
+
+#if defined CONTACT_SHADOW_HIZ_ACTIVE && defined HIZ_READ
+    if (hizSegmentClear(full, clip.xyz / clip.w * 0.5 + 0.5, clipEnd.xyz / clipEnd.w * 0.5 + 0.5)) return 1.0;
+#endif
+
+    float pz = origin.z + rayStep.z * (1.0 + dither);
+    float occ = 0.0;
+    for (int i = 0; i < CONTACT_SHADOW_STEPS; i++) {
+        vec3 sp = clip.xyz / clip.w * 0.5 + 0.5;
+        clip += clipStep;
+        float rayZ = pz;
+        pz += rayStep.z;
+        if (clamp(sp.xy, 0.0, 1.0) != sp.xy) break;
+        float d = texture(depthTex, sp.xy).r;
+        if (d >= 1.0 || d < HAND_DEPTH_LIMIT) continue;
+        float occluderZ = screenToView(vec3(sp.xy, d), projInv).z;
+        float gap = occluderZ - rayZ;
+        if (gap > 0.008 && gap < CONTACT_SHADOW_THICKNESS + dist * 0.01) { occ = 1.0; break; }
+    }
+    return 1.0 - occ * CONTACT_SHADOW_STRENGTH * fade;
+}
+#endif
+
+
 vec3 getShadow(vec3 scenePos, vec3 worldNormal, float NoL, float dither, mat4 shadowMV, mat4 shadowProj, sampler2D stex0, sampler2D stex1, sampler2D scol0) {
 #ifndef SHADOWS
     return vec3(1.0);
@@ -72,8 +109,10 @@ vec3 getShadow(vec3 scenePos, vec3 worldNormal, float NoL, float dither, mat4 sh
         float z = sp.z - 0.00035;
         float s1 = step(z, texture(stex1, sp.xy).r);
     #if defined COLORED_SHADOWS || defined CAUSTICS_ACTIVE
-        float s0 = step(z, texture(stex0, sp.xy).r);
-        sum += s1 * mix(tint, vec3(1.0), s0);
+        if (s1 > 0.0) {
+            float s0 = step(z, texture(stex0, sp.xy).r);
+            sum += mix(tint, vec3(1.0), s0);
+        }
     #else
         sum += vec3(s1);
     #endif

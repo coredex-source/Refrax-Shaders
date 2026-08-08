@@ -73,6 +73,9 @@ in vec3 scenePos;
 flat in int blockId;
 flat in vec2 tileBase;
 flat in vec2 tileSize;
+#if defined PBR_MATERIALS && !defined PARTICLE
+flat in vec2 tileAlphaRange;
+#endif
 
 #if defined WATER || defined HAND
 /* RENDERTARGETS: 0,2 */
@@ -84,7 +87,7 @@ layout(location = 0) out vec4 outColor;
 #endif
 
 vec3 blockLightAt(vec3 pos, vec3 N, float lmBlock) {
-    vec3 fallback = FALLBACK_BLOCKLIGHT * pow(lmBlock, 3.0) * 1.85;
+    vec3 fallback = FALLBACK_BLOCKLIGHT * pow3(lmBlock) * 1.85;
 #ifdef WORLD_NETHER
     fallback *= NETHER_FALLBACK_SCALE;
 #endif
@@ -137,17 +140,8 @@ void main() {
 #endif
     bool alphaCutoutTile = false;
 #if defined PBR_MATERIALS && !defined PARTICLE
-    float a00 = texture(gtexture, tileBase + tileSize * vec2(0.125, 0.125)).a;
-    float a10 = texture(gtexture, tileBase + tileSize * vec2(0.500, 0.125)).a;
-    float a20 = texture(gtexture, tileBase + tileSize * vec2(0.875, 0.125)).a;
-    float a01 = texture(gtexture, tileBase + tileSize * vec2(0.125, 0.500)).a;
-    float a11 = texture(gtexture, tileBase + tileSize * vec2(0.500, 0.500)).a;
-    float a21 = texture(gtexture, tileBase + tileSize * vec2(0.875, 0.500)).a;
-    float a02 = texture(gtexture, tileBase + tileSize * vec2(0.125, 0.875)).a;
-    float a12 = texture(gtexture, tileBase + tileSize * vec2(0.500, 0.875)).a;
-    float a22 = texture(gtexture, tileBase + tileSize * vec2(0.875, 0.875)).a;
-    float tileMinAlpha = min(min(min(a00, a10), min(a20, a01)), min(min(a11, a21), min(a02, min(a12, a22)))) * vcolor.a;
-    float tileMaxAlpha = max(max(max(a00, a10), max(a20, a01)), max(max(a11, a21), max(a02, max(a12, a22)))) * vcolor.a;
+    float tileMinAlpha = tileAlphaRange.x * vcolor.a;
+    float tileMaxAlpha = tileAlphaRange.y * vcolor.a;
     alphaCutoutTile = !realWaterFwd && tileMinAlpha < 0.05 && tileMaxAlpha > 0.95;
 #endif
     bool cutoutFoliage = isFoliage(blockId) || alphaCutoutTile;
@@ -303,16 +297,16 @@ void main() {
     #ifdef WORLD_END
     vec3 shadow = vec3(0.75);
     #else
-    vec3 shadow = vec3(pow(lmcoord.y, 2.0));
+    vec3 shadow = vec3(pow2(lmcoord.y));
     #endif
     NoL = 0.6;
   #elif defined HAND
-    vec3 shadow = vec3(pomShadow * pow(lmcoord.y, 2.0));
+    vec3 shadow = vec3(pomShadow * pow2(lmcoord.y));
   #else
     vec3 shadow = getShadow(scenePos, N, NoL, dither, shadowModelView, shadowProjection, shadowtex0, shadowtex1, shadowcolor0);
     #if defined CLOUD_SHADOWS && !defined WORLD_NETHER && !defined WORLD_END
     if (NoL > 0.0 && shadow.g > 0.001)
-        shadow *= cloudShadow(scenePos + cameraPosition, lightDir, frameTimeCounter, rainStrength);
+        shadow *= cloudShadow(scenePos + cameraPosition, cameraPosition, lightDir, frameTimeCounter, rainStrength);
     #endif
   #endif
 
@@ -365,7 +359,7 @@ void main() {
         float handNoV = saturate(dot(V, N));
         float handReflectionRoughness = materialReflectionRoughness(mat.roughness, mat.clearcoat);
         vec3 handFresnel = matteHand ? vec3(0.0) : materialReflectionFresnel(handNoV, mat.f0, albedo.rgb, mat.clearcoat, mat.thinFilm);
-        float handReflectionWeight = metalHand ? mix(0.35, 0.85, 1.0 - saturate(handReflectionRoughness)) : pow(1.0 - saturate(handReflectionRoughness), 2.0);
+        float handReflectionWeight = metalHand ? mix(0.35, 0.85, 1.0 - saturate(handReflectionRoughness)) : pow2(1.0 - saturate(handReflectionRoughness));
         vec3 handReflectionDirection = reflect(-V, N);
         vec3 handReflection = dimensionSkyReflection(handReflectionDirection, sunDir, fogColor, frameTimeCounter, rainStrength);
         handReflection *= mix(0.02, 1.0, lmcoord.y * lmcoord.y);
@@ -375,7 +369,7 @@ void main() {
 
   #ifdef WATER
     if (!realWater && cutoutFoliage) {
-        outWaterData = vec4(N, 0.0);
+        outWaterData = packSurfaceData(N, 0.0, SURF_STATIC);
         outColor = vec4(lit, 1.0);
         return;
     }
@@ -398,9 +392,10 @@ void main() {
         vec3 viewPos = (gbufferModelView * vec4(scenePos, 1.0)).xyz;
         vec3 reflDirV = mat3(gbufferModelView) * reflDirW;
         vec3 hit;
+        float ssrQuality = ssrRayQuality(waterRoughness);
         float hitS = WATER_REFLECTION_MODE == 1
-            ? raymarchSSRFast(depthtex1, viewPos, reflDirV, gbufferProjection, gbufferProjectionInverse, ssrDither, ssrJitter, hit)
-            : raymarchSSR(depthtex1, viewPos, reflDirV, gbufferProjection, gbufferProjectionInverse, ssrDither, ssrJitter, hit);
+            ? raymarchSSRFast(depthtex1, ivec2(viewWidth, viewHeight), viewPos, reflDirV, gbufferProjection, gbufferProjectionInverse, ssrDither, ssrJitter, ssrQuality, hit)
+            : raymarchSSR(depthtex1, ivec2(viewWidth, viewHeight), viewPos, reflDirV, gbufferProjection, gbufferProjectionInverse, ssrDither, ssrJitter, ssrQuality, hit);
         if (hitS > 0.0) {
             vec3 hitView = screenToView(hit, gbufferProjectionInverse);
             vec3 hitScene = (gbufferModelViewInverse * vec4(hitView, 1.0)).xyz;
@@ -474,7 +469,7 @@ void main() {
             alpha = max(alpha, mask * 0.92);
         }
 #endif
-        outWaterData = vec4(N, 2.0);
+        outWaterData = packSurfaceData(N, 0.0, SURF_WATER);
     } else {
       #if defined PBR_MATERIALS && !defined PARTICLE
         float glassSmooth = 1.0 - sqrt(saturate(mat.roughness));
@@ -523,12 +518,12 @@ void main() {
             alpha = saturate(max(texA.a, texB.a) * (0.68 + 0.26 * veil));
             alpha *= smoothstep(0.08, 0.55, length(scenePos));
         }
-        outWaterData = vec4(N, blockId == 10018 ? 3.0 : 0.0);
+        outWaterData = packSurfaceData(N, 0.0, blockId == 10018 ? SURF_PORTAL : SURF_STATIC);
     }
   #endif
 
 #if defined HAND && !defined WATER
-    outWaterData = vec4(N, 0.0);
+    outWaterData = packSurfaceData(N, 0.0, SURF_STATIC);
 #endif
     outColor = vec4(lit, alpha);
 #ifdef HAND_OPAQUE

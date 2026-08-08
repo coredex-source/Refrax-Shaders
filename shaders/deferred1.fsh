@@ -1,2 +1,2 @@
 #version 400 compatibility
-#include "/program/deferred1.fsh.glsl"
+#include "/program/deferred_ao.fsh.glsl"

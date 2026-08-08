@@ -73,11 +73,11 @@ void voxy_emitFragment(VoxyFragmentParameters p) {
     vec3 skyLight = endAmbient(N);
 #else
     vec3 lightCol = (sunColor(sunDir.y) + moonColor(-sunDir.y)) * (1.0 - rainStrength * 0.9);
-    vec3 shadow = vec3(pow(lm.y, 4.0));
+    vec3 shadow = vec3(pow4(lm.y));
     vec3 skyLight = skyAmbientDirectional(N, sunDir, rainStrength) * pow(lm.y, 2.2);
     skyLight += lightCol * 0.05 * saturate(0.6 - 0.4 * N.y) * pow(lm.y, 2.2);
 #endif
-    vec3 blockLight = FALLBACK_BLOCKLIGHT * pow(lm.x, 3.0) * 1.85;
+    vec3 blockLight = FALLBACK_BLOCKLIGHT * pow3(lm.x) * 1.85;
 #ifdef WORLD_NETHER
     blockLight *= NETHER_FALLBACK_SCALE * facing;
 #endif
@@ -125,13 +125,13 @@ void voxy_emitFragment(VoxyFragmentParameters p) {
             alpha = max(alpha, foam * 0.92);
         }
 #endif
-        outWaterData = vec4(N, 2.0);
+        outWaterData = packSurfaceData(N, 0.0, SURF_WATER);
     } else {
         vec3 albedo = srgbToLinear(base.rgb);
         lit = albedo * (lightCol * NoL * shadow + skyLight + blockLight + minAmb);
         lit += refl * fres * 0.8 + sunSpec * 0.5;
         alpha = max(base.a, fres * 0.5);
-        outWaterData = vec4(0.0);
+        outWaterData = packSurfaceData(N, 0.0, SURF_STATIC);
     }
 
     outLayer = vec4(lit * alpha, alpha);
